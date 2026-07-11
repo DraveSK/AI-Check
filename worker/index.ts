@@ -81,7 +81,14 @@ export default {
     const headers = new Headers(asset.headers);
     headers.set(
       'Cache-Control',
-      url.pathname === '/' || url.pathname.endsWith('.html') ? 'no-cache' : 'public, max-age=31536000, immutable',
+      // `no-cache` still permits Cloudflare's edge to cache-and-revalidate,
+      // which in practice served a stale index.html (with old, no-longer-
+      // existing hashed asset filenames) for several minutes after a
+      // deploy. The entry HTML is tiny and must always be current — its
+      // whole job is pointing at the current hashed asset names — so it
+      // gets `no-store` instead. Hashed assets underneath keep aggressive
+      // immutable caching; a new deploy gives them new filenames anyway.
+      url.pathname === '/' || url.pathname.endsWith('.html') ? 'no-store' : 'public, max-age=31536000, immutable',
     );
     return new Response(asset.body, {
       status: asset.status,
