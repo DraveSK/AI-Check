@@ -3,6 +3,58 @@
 **AI Check** is an AI-powered, privacy-first device inspection platform
 that helps people understand, optimize, and protect their computers.
 
+# AI Check
+
+**AI Check** is a privacy-first, AI-powered computer inspection platform that helps users understand, optimize, and protect their devices.
+
+Unlike traditional "cleaner" applications, AI Check does **not automatically delete files**. It analyzes system metadata and provides intelligent recommendations while keeping users in full control.
+
+## Key Features
+
+- 🔍 Scan storage usage
+- 💾 Detect large folders and caches
+- 🧠 AI-powered recommendations
+- 🛡 Privacy-first (metadata only)
+- 🚫 Never uploads personal files
+- 🔑 Bring Your Own AI API (OpenAI, Claude, Gemini, OpenRouter, Ollama...)
+- 🌍 Cross-platform (macOS, Windows, Linux)
+- ☁️ Built with Cloudflare Pages, Workers, D1 and R2
+
+## Privacy First
+
+AI Check is designed with **Privacy by Design** principles.
+
+The scanner never collects:
+
+- Passwords
+- Private keys
+- Wallet seed phrases
+- Document contents
+- Photos
+- Videos
+- Emails
+- Browser history
+
+Only system metadata is analyzed.
+
+## Project Status
+
+🚧 Active Development
+
+Current progress:
+
+- ✅ Modern Dashboard
+- ✅ Storage Scanner (macOS MVP)
+- ✅ Cloudflare Architecture
+- ✅ Local Report Generation
+- 🚧 AI Analysis
+- 🚧 Windows Support
+- 🚧 Linux Support
+
+## Mission
+
+Help users understand their computers before deleting anything.
+
 > **Status: production SaaS foundation — real storage scanning on macOS,
 > real hosted backend on Cloudflare.** The full journey works end-to-end:
 > sign in with a magic link, run a local scan, upload the report
