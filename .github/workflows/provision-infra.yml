@@ -92,32 +92,10 @@ jobs:
           fi
 
       - name: Write bindings into wrangler.toml
-        run: |
-          set -euo pipefail
-          node -e "
-            const fs = require('fs');
-            let toml = fs.readFileSync('wrangler.toml', 'utf-8');
-            const marker = '# Once provisioned, this file will contain:';
-            const idx = toml.indexOf(marker);
-            if (idx !== -1) toml = toml.slice(0, idx).trimEnd() + '\n';
-            toml += \`
-[[d1_databases]]
-binding = \"DB\"
-database_name = \"${D1_NAME}\"
-database_id = \"${{ steps.d1.outputs.id }}\"
-migrations_dir = \"d1/migrations\"
-
-[[r2_buckets]]
-binding = \"REPORTS\"
-bucket_name = \"${R2_NAME}\"
-
-[[kv_namespaces]]
-binding = \"RATE_LIMIT\"
-id = \"${{ steps.kv.outputs.id }}\"
-\`;
-            fs.writeFileSync('wrangler.toml', toml);
-          "
-          cat wrangler.toml
+        env:
+          D1_ID: ${{ steps.d1.outputs.id }}
+          KV_ID: ${{ steps.kv.outputs.id }}
+        run: node scripts/write-bindings.mjs
 
       - name: Apply D1 migrations
         env:
