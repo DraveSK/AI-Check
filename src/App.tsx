@@ -1,31 +1,125 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Activity, Archive, ArrowUpRight, Bot, Box, Check, ChevronDown, ChevronRight, CircleAlert, Clock3, Code2, Command, Cpu, Database, FileCode2, FolderOpen, Gauge, HardDrive, KeyRound, LayoutDashboard, Laptop, Moon, Play, Search, Settings, ShieldCheck, Sparkles, Sun, Terminal, Wallet, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, Laptop, Moon, Search, Settings, Sun } from 'lucide-react';
+import { ProviderRoot, useProviders } from './providers';
+import { useProviderData } from './hooks/useProviderData';
+import { nav, type Page } from './config/navigation';
+import { Overview } from './pages/Overview';
+import { StoragePage } from './pages/Storage';
+import { SecurityPage } from './pages/Security';
+import { Developer } from './pages/Developer';
+import { Crypto } from './pages/Crypto';
+import { Report } from './pages/Report';
+import { Generic } from './pages/Generic';
 
-type Page = 'Overview'|'Storage Analyzer'|'Security Analyzer'|'Performance Analyzer'|'Developer Environment'|'Crypto Wallet Detector'|'Cleanup Recommendation'|'AI Report'|'Health Score'|'Settings'|'History';
-const nav: {name: Page; icon: any}[] = [
-  {name:'Overview',icon:LayoutDashboard},{name:'Storage Analyzer',icon:HardDrive},{name:'Security Analyzer',icon:ShieldCheck},{name:'Performance Analyzer',icon:Gauge},{name:'Developer Environment',icon:Code2},{name:'Crypto Wallet Detector',icon:Wallet},{name:'Cleanup Recommendation',icon:Sparkles},{name:'AI Report',icon:Bot},{name:'Health Score',icon:Activity},{name:'History',icon:Clock3},
-];
-const folders = [['Applications','102 GB','20%'],['Docker','84 GB','16%'],['Flutter','38 GB','7%'],['Node','27 GB','5%'],['Downloads','23 GB','4%'],['Desktop','18 GB','3%'],['Documents','15 GB','3%'],['Caches','59 GB','12%']];
-const cleanup=[['Node Cache','18 GB','Safe'],['Docker build cache','32 GB','Safe'],['Chrome Cache','6 GB','Safe'],['Xcode derived data','48 GB','Review']];
-function Pill({children, tone='neutral'}:{children:React.ReactNode,tone?:string}){return <span className={'pill '+tone}>{children}</span>}
-function Card({children,className='' }:{children:React.ReactNode,className?:string}){return <section className={'card '+className}>{children}</section>}
-function PageTitle({title,copy,action}:{title:string,copy:string,action?:React.ReactNode}){return <div className="page-title"><div><h1>{title}</h1><p>{copy}</p></div>{action}</div>}
-function Meter({value,color='var(--accent)'}:{value:number,color?:string}){return <div className="meter"><i style={{width:value+'%',background:color}}/></div>}
+function Dashboard() {
+  const [page, setPage] = useState<Page>('Overview');
+  const [dark, setDark] = useState(true);
+  const providers = useProviders();
+  const device = useProviderData(() => providers.device.getActiveDevice());
+  const security = useProviderData(() => providers.security.getSecuritySnapshot('active'));
 
-function Overview({setPage}:{setPage:(p:Page)=>void}){return <><PageTitle title="Good morning, Drave." copy="Your MacBook Pro was last inspected 4 minutes ago." action={<button className="button primary"><Play size={15}/> Run inspection</button>}/><div className="metrics"><Card className="score"><div className="metric-top"><span>Health score</span><Activity size={18}/></div><div className="score-value">92<span>/100</span></div><p><span className="up">↑ 4 points</span> since last week</p><div className="score-ring"><div><b>Excellent</b><small>Device health</small></div></div></Card><Card><div className="metric-top"><span>Storage</span><HardDrive size={18}/></div><b className="big">472 <small>GB / 512 GB</small></b><Meter value={92} color="linear-gradient(90deg,#f3c467,#f47f66)"/><p className="warning"><CircleAlert size={14}/> 40 GB available</p></Card><Card><div className="metric-top"><span>Performance</span><Zap size={18}/></div><b className="big">Excellent</b><p>CPU 12% · Memory 61%</p><div className="sparkline">▁▂▁▃▂▄▂▃▁▂▂</div></Card><Card><div className="metric-top"><span>Security</span><ShieldCheck size={18}/></div><b className="big">2 <small>warnings</small></b><p><span className="warning-dot"/> API key exposed in .env</p><p><span className="warning-dot"/> SSH key needs review</p></Card></div><div className="grid two"><Card><div className="card-head"><div><h2>Storage overview</h2><p>Where your disk space is going</p></div><button onClick={()=>setPage('Storage Analyzer')} className="ghost">View analyzer <ArrowUpRight size={15}/></button></div><div className="storage"><div className="donut"><b>472<small>GB used</small></b></div><div className="legend"><p><i className="c1"/>Applications <b>102 GB</b></p><p><i className="c2"/>Developer tools <b>149 GB</b></p><p><i className="c3"/>Personal files <b>56 GB</b></p><p><i className="c4"/>System & other <b>165 GB</b></p></div></div></Card><Card><div className="card-head"><div><h2>Inspection activity</h2><p>Latest events from this device</p></div><button onClick={()=>setPage('History')} className="ghost">Full history <ArrowUpRight size={15}/></button></div><div className="activity"><p><span className="iconbox purple"><Bot size={16}/></span><span><b>AI report updated</b><small>Health score improved by 4 points</small></span><time>4m</time></p><p><span className="iconbox blue"><HardDrive size={16}/></span><span><b>Storage scan complete</b><small>104 GB can be safely reclaimed</small></span><time>4m</time></p><p><span className="iconbox orange"><ShieldCheck size={16}/></span><span><b>Security scan complete</b><small>2 items need your attention</small></span><time>5m</time></p></div></Card></div><div className="grid two lower"><Card><div className="card-head"><div><h2>Quick cleanup</h2><p>Safe files ready to reclaim</p></div><Pill tone="green">104 GB available</Pill></div>{cleanup.slice(0,3).map(([n,s,t])=><div className="row" key={n}><span className="file"><Archive size={17}/>{n}</span><Pill tone="green">{t}</Pill><b>{s}</b><button className="icon-button"><ChevronRight size={16}/></button></div>)}<button onClick={()=>setPage('Cleanup Recommendation')} className="full-button">Review cleanup plan <ArrowUpRight size={15}/></button></Card><Card className="report-mini"><span className="eyebrow"><Sparkles size={14}/> AI INSIGHT</span><h2>Your Mac is in great shape.</h2><p>You can free <b>104 GB</b> without affecting your apps. Docker images are the largest opportunity.</p><button onClick={()=>setPage('AI Report')} className="button dark">Read full AI report <ArrowUpRight size={15}/></button><div className="bot-orb">✦</div></Card></div></>}
+  const content =
+    page === 'Overview' ? (
+      <Overview setPage={setPage} />
+    ) : page === 'Storage Analyzer' ? (
+      <StoragePage />
+    ) : page === 'Security Analyzer' ? (
+      <SecurityPage />
+    ) : page === 'Developer Environment' ? (
+      <Developer />
+    ) : page === 'Crypto Wallet Detector' ? (
+      <Crypto />
+    ) : page === 'AI Report' ? (
+      <Report setPage={setPage} />
+    ) : (
+      <Generic page={page} />
+    );
 
-function StoragePage(){const [open,setOpen]=useState('Docker');return <><PageTitle title="Storage Analyzer" copy="A complete map of your disk usage, organized for action." action={<button className="button"><Command size={15}/> Export report</button>}/><div className="grid side"><Card className="storage-large"><div className="capacity"><div className="disk"><b>472<small>GB used</small></b></div><div><Pill tone="orange">92% capacity</Pill><h2>40 GB <small>available</small></h2><p>Your disk is nearing capacity. We found 104 GB that can be reclaimed safely.</p><button className="ghost">See cleanup recommendation <ArrowUpRight size={15}/></button></div></div></Card><Card><h3>Space by category</h3><div className="category"><p>Developer tools <b>149 GB</b></p><Meter value={31}/><p>Applications <b>102 GB</b></p><Meter value={22} color="#8d7cf6"/><p>System & other <b>165 GB</b></p><Meter value={35} color="#e2b84b"/></div></Card></div><Card className="folder-card"><div className="card-head"><div><h2>Largest folders</h2><p>Click a folder to explore its contents</p></div><Search size={19}/></div>{folders.map(([n,s,p])=><div className={'folder-row '+(open===n?'selected':'')} key={n} onClick={()=>setOpen(open===n?'':n)}><FolderOpen size={18}/><b>{n}</b><span className="bar"><i style={{width:p}}/></span><strong>{s}</strong><ChevronDown size={17}/>{open===n&&<div className="tree"><span>› Library</span><span>› Cache</span><span>› Data</span><small>{n} contains files that are safe to review before removal.</small></div>}</div>)}</Card></>}
+  return (
+    <div className={dark ? 'app dark' : 'app'}>
+      <aside>
+        <div className="brand">
+          <img src="/ai-check-logo.png" alt="AI Check" />
+          <span>AI Check</span>
+        </div>
+        <div className="workspace">
+          <span className="avatar">DT</span>
+          <div>
+            <b>Drave Team</b>
+            <small>Personal workspace</small>
+          </div>
+          <ChevronDown size={15} />
+        </div>
+        <nav>
+          {nav.map(({ name, icon: Icon }) => (
+            <button key={name} onClick={() => setPage(name)} className={page === name ? 'active' : ''}>
+              <Icon size={18} />
+              {name}
+              {name === 'Security Analyzer' && security.data && security.data.itemsNeedingReview > 0 && (
+                <i>{security.data.itemsNeedingReview}</i>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="side-bottom">
+          <button onClick={() => setPage('Settings')} className={page === 'Settings' ? 'active' : ''}>
+            <Settings size={18} />
+            Settings
+          </button>
+          <button onClick={() => setDark(!dark)}>
+            <span>{dark ? <Moon size={18} /> : <Sun size={18} />}</span>
+            {dark ? 'Dark mode' : 'Light mode'}
+            <span className="switch">
+              <i />
+            </span>
+          </button>
+          <div className="device">
+            <Laptop size={17} />
+            <span>
+              <b>{device.data?.name ?? 'Device'}</b>
+              <small>{device.data?.osVersion ?? '—'}</small>
+            </span>
+            <span className="online" />
+          </div>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div className="crumb">
+            <span>AI Check</span>
+            <ChevronRight size={14} />
+            <b>{page}</b>
+          </div>
+          <div className="top-actions">
+            <button className="search">
+              <Search size={17} /> Search <kbd>⌘ K</kbd>
+            </button>
+            <button className="bell">●</button>
+            <span className="avatar large">DT</span>
+          </div>
+        </header>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={page}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.18 }}
+            className="content"
+          >
+            {content}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+    </div>
+  );
+}
 
-const security=[['SSH Keys','12 keys found','Review access'],['API Keys','4 files found','1 exposed'],['.env files','8 files found','No issues'],['Private Keys','2 certificates found','Protected'],['Wallet Files','1 wallet detected','Warning'],['Browser Passwords','Safari keychain','Protected'],['Git Credentials','1 credential helper','Protected'],['Certificates','14 certificates','Valid']];
-function SecurityPage(){return <><PageTitle title="Security Analyzer" copy="Sensitive files are identified locally. Drave never reads secret values." action={<Pill tone="green"><Check size={13}/> Scan complete</Pill>}/><Card className="security-hero"><div><span className="eyebrow"><ShieldCheck size={14}/> PRIVACY-FIRST INSPECTION</span><h2>No malware indicators found.</h2><p>2 items deserve a quick review. Your sensitive content remains on your device at all times.</p></div><div className="shield">✓<small>Protected</small></div></Card><div className="security-list">{security.map(([n,sub,status],i)=><Card key={n} className="security-item"><span className={'security-icon i'+i}><KeyRound size={18}/></span><div><h3>{n}</h3><p>{sub}</p></div><Pill tone={status.includes('exposed')||status==='Warning'?'orange':'green'}>{status}</Pill><button className="icon-button"><ChevronRight size={16}/></button></Card>)}</div></>}
-
-function Developer(){let tools=[['Docker','4 containers, 38 GB images'],['Node.js','v22.14 · 12 projects'],['Python','3.12 · 6 virtual envs'],['Java','JDK 21'],['Go','v1.23'],['Rust','1.83 stable'],['Flutter','3.27 · 38 GB'],['Android Studio','2024.2'],['Xcode','16.2 · 48 GB'],['VS Code','42 extensions'],['Homebrew','187 packages']];return <><PageTitle title="Developer Environment" copy="Everything installed on this machine, understood in context." action={<button className="button"><Terminal size={15}/> Generate script</button>}/><div className="dev-summary"><Card><Code2/><b>11 developer tools</b><p>All environments detected</p></Card><Card><Database/><b>149 GB in use</b><p>Developer tooling & caches</p></Card><Card><Sparkles/><b>AI understands context</b><p>Nothing critical is removed</p></Card></div><div className="tool-grid">{tools.map(([n,s],i)=><Card key={n} className="tool"><span className={'tool-logo l'+i}>{n[0]}</span><div><h3>{n}</h3><p>{s}</p></div><Pill tone="green">Installed</Pill></Card>)}</div></>}
-
-function Crypto(){let wallets=['Bitcoin Core','MetaMask','Ledger Live','Electrum','Solana CLI','Exodus','Monero','Trust Wallet'];return <><PageTitle title="Crypto Wallet Detector" copy="Detect wallet software and files without ever accessing private keys."/><Card className="crypto-hero"><Wallet size={28}/><div><Pill tone="orange">1 wallet detected</Pill><h2>MetaMask browser extension</h2><p>Detected in your Chrome profile. No wallet data or private keys were accessed.</p></div><button className="button">Review finding</button></Card><h2 className="section-title">Wallet checks</h2><div className="wallet-grid">{wallets.map((w,i)=><Card key={w} className="wallet"><span className="wallet-logo">{w[0]}</span><h3>{w}</h3><Pill tone={i===1?'orange':'neutral'}>{i===1?'Detected':'Not found'}</Pill></Card>)}</div><p className="privacy-note"><ShieldCheck size={16}/> Drave only checks for application signatures and known file locations. Private keys are never read, transmitted, or stored.</p></>}
-
-function Report(){return <><PageTitle title="AI Report" copy="An intelligent summary of your device health and the actions worth taking." action={<button className="button primary"><FileCode2 size={15}/> Generate script</button>}/><Card className="ai-report"><div className="report-glow"/><span className="eyebrow"><Sparkles size={14}/> DRAVE INTELLIGENCE</span><h1>Your Mac is healthy.</h1><p>You can safely free <strong>104 GB</strong> without affecting any applications.</p><div className="report-stats"><span><b>92</b>Health score</span><span><b>104 GB</b>Safe to free</span><span><b>2</b>Warnings</span></div></Card><div className="insights"><Card><span className="insight-icon yellow">↗</span><h3>Largest opportunity</h3><p>Docker images are taking <b>38 GB</b>. Remove unused images to reclaim space quickly.</p><button className="ghost">Open Docker cleanup <ArrowUpRight size={15}/></button></Card><Card><span className="insight-icon purple">✦</span><h3>Development-ready</h3><p>Flutter SDK is installed and your development environment is healthy.</p><button className="ghost">View developer tools <ArrowUpRight size={15}/></button></Card><Card><span className="insight-icon green">✓</span><h3>Security status</h3><p>No malware indicators found. One crypto wallet is present on this device.</p><button className="ghost">Review security <ArrowUpRight size={15}/></button></Card></div></>}
-
-function Generic({page}:{page:Page}){if(page==='Storage Analyzer')return <StoragePage/>;if(page==='Security Analyzer')return <SecurityPage/>;if(page==='Developer Environment')return <Developer/>;if(page==='Crypto Wallet Detector')return <Crypto/>;if(page==='AI Report')return <Report/>;let title=page;let items=page==='Cleanup Recommendation'?cleanup:page==='Performance Analyzer'?[['CPU usage','12%','Excellent'],['Memory pressure','61%','Normal'],['Battery health','94%','Healthy'],['Startup apps','9 enabled','Review']]:page==='Health Score'?[['Storage health','88/100','Good'],['Security posture','94/100','Strong'],['Performance','96/100','Excellent'],['Developer environment','91/100','Healthy']]:[['MacBook Pro','Today, 09:41','92/100'],['MacBook Pro','Yesterday, 18:23','88/100'],['MacBook Pro','Jul 8, 11:17','89/100']];return <><PageTitle title={title} copy={page==='Cleanup Recommendation'?'Clear space with a safe, AI-reviewed cleanup plan.':page==='History'?'Review the health of your devices over time.':page==='Settings'?'Configure how Drave inspects and protects your devices.':'A focused view of your device health.'}/><Card><div className="card-head"><div><h2>{page==='History'?'Inspection history':page==='Cleanup Recommendation'?'Recommended actions':'Health breakdown'}</h2><p>Last inspection completed 4 minutes ago</p></div><Pill tone="green">Up to date</Pill></div>{items.map(([a,b,c])=><div className="row" key={a}><span className="file"><span className="row-icon"><Check size={15}/></span>{a}</span><span className="row-sub">{b}</span><Pill tone={c==='Review'?'orange':'green'}>{c}</Pill><button className="icon-button"><ChevronRight size={16}/></button></div>)}</Card></>}
-
-export default function App(){const [page,setPage]=useState<Page>('Overview'); const [dark,setDark]=useState(true);const content=page==='Overview'?<Overview setPage={setPage}/>:<Generic page={page}/>;return <div className={dark?'app dark':'app'}><aside><div className="brand"><img src="/ai-check-logo.png" alt="AI Check"/><span>AI Check</span></div><div className="workspace"><span className="avatar">DT</span><div><b>Drave Team</b><small>Personal workspace</small></div><ChevronDown size={15}/></div><nav>{nav.map(({name,icon:Icon})=><button key={name} onClick={()=>setPage(name)} className={page===name?'active':''}><Icon size={18}/>{name}{name==='Security Analyzer'&&<i>2</i>}</button>)}</nav><div className="side-bottom"><button onClick={()=>setPage('Settings')} className={page==='Settings'?'active':''}><Settings size={18}/>Settings</button><button onClick={()=>setDark(!dark)}><span>{dark?<Moon size={18}/>:<Sun size={18}/>}</span>{dark?'Dark mode':'Light mode'}<span className="switch"><i/></span></button><div className="device"><Laptop size={17}/><span><b>MacBook Pro</b><small>macOS Sequoia 15.2</small></span><span className="online"/></div></div></aside><main><header><div className="crumb"><span>Drave AI Check</span><ChevronRight size={14}/><b>{page}</b></div><div className="top-actions"><button className="search"><Search size={17}/> Search <kbd>⌘ K</kbd></button><button className="bell">●</button><span className="avatar large">DT</span></div></header><AnimatePresence mode="wait"><motion.div key={page} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-5}} transition={{duration:.18}} className="content">{content}</motion.div></AnimatePresence></main></div>}
+export default function App() {
+  return (
+    <ProviderRoot>
+      <Dashboard />
+    </ProviderRoot>
+  );
+}

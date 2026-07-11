@@ -6,3 +6,5 @@ vite.config.d.ts
 .DS_Store
 .dev.vars
 .wrangler/
+public/ai-check-report.json
+.env.local

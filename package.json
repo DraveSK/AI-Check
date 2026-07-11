@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "scan": "tsx scanner/cli.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "latest",
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "tsx": "^4.23.0"
   }
 }
