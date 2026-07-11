@@ -79,59 +79,48 @@ jobs:
           fi
 
       - name: Create or find R2 bucket
+        # `wrangler r2 bucket list` doesn't support --json on the pinned
+        # wrangler version, and the binding only needs the bucket *name*
+        # (no id) — so this just attempts creation and tolerates an
+        # already-exists error instead of listing first.
         run: |
           set -uo pipefail
-          LIST_OUTPUT=$(npx wrangler r2 bucket list --json)
-          LIST_STATUS=$?
-          if [ $LIST_STATUS -ne 0 ]; then
-            echo "::error::wrangler r2 bucket list failed. Raw output below — most likely the API token is missing the Workers R2 Storage:Edit permission."
-            echo "$LIST_OUTPUT"
+          OUTPUT=$(npx wrangler r2 bucket create "$R2_NAME" 2>&1)
+          STATUS=$?
+          echo "$OUTPUT"
+          if [ $STATUS -ne 0 ] && ! echo "$OUTPUT" | grep -qi "already exists"; then
+            echo "::error::wrangler r2 bucket create failed — see output above. Most likely the API token is missing the Workers R2 Storage:Edit permission."
             exit 1
-          fi
-          EXISTING=$(echo "$LIST_OUTPUT" | node -e "
-            const list = JSON.parse(require('fs').readFileSync(0, 'utf-8'));
-            console.log(list.some(b => b.name === process.env.R2_NAME) ? 'yes' : '');
-          " 2>/dev/null || true)
-          if [ -z "$EXISTING" ]; then
-            npx wrangler r2 bucket create "$R2_NAME"
-          else
-            echo "R2 bucket $R2_NAME already exists."
           fi
 
       - name: Create or find KV namespace
         id: kv
+        # `wrangler kv namespace list` doesn't support --json on the
+        # pinned wrangler version either — attempt creation directly. If
+        # a namespace with this title already exists (re-run case),
+        # wrangler's own error names it; this step then fails with a
+        # pointer to add the binding manually rather than guessing at
+        # list-output parsing that can't be verified without a live
+        # account (see docs/DEPLOYMENT.md).
         run: |
           set -uo pipefail
-          LIST_OUTPUT=$(npx wrangler kv namespace list --json)
-          LIST_STATUS=$?
-          if [ $LIST_STATUS -ne 0 ]; then
-            echo "::error::wrangler kv namespace list failed. Raw output below — most likely the API token is missing the Workers KV Storage:Edit permission."
-            echo "$LIST_OUTPUT"
+          OUTPUT=$(npx wrangler kv namespace create "$KV_TITLE" 2>&1)
+          STATUS=$?
+          echo "$OUTPUT"
+          if [ $STATUS -ne 0 ]; then
+            if echo "$OUTPUT" | grep -qi "already exists"; then
+              echo "::error::A KV namespace named $KV_TITLE already exists. Find its id in the Cloudflare dashboard (Workers & Pages → KV) and add the [[kv_namespaces]] block to wrangler.toml manually — see docs/DEPLOYMENT.md."
+            else
+              echo "::error::wrangler kv namespace create failed — see output above. Most likely the API token is missing the Workers KV Storage:Edit permission."
+            fi
             exit 1
           fi
-          EXISTING=$(echo "$LIST_OUTPUT" | node -e "
-            const list = JSON.parse(require('fs').readFileSync(0, 'utf-8'));
-            const found = list.find(n => n.title.endsWith(process.env.KV_TITLE));
-            console.log(found ? found.id : '');
-          " 2>/dev/null || true)
-          if [ -n "$EXISTING" ]; then
-            echo "Found existing KV namespace: $EXISTING"
-            echo "id=$EXISTING" >> "$GITHUB_OUTPUT"
-          else
-            OUTPUT=$(npx wrangler kv namespace create "$KV_TITLE")
-            CREATE_STATUS=$?
-            echo "$OUTPUT"
-            if [ $CREATE_STATUS -ne 0 ]; then
-              echo "::error::wrangler kv namespace create failed — see output above."
-              exit 1
-            fi
-            ID=$(echo "$OUTPUT" | grep -oE 'id = "[^"]+"' | head -1 | cut -d'"' -f2)
-            if [ -z "$ID" ]; then
-              echo "::error::Could not parse the namespace id from wrangler's output above. Add the [[kv_namespaces]] block to wrangler.toml manually (see docs/DEPLOYMENT.md)."
-              exit 1
-            fi
-            echo "id=$ID" >> "$GITHUB_OUTPUT"
+          ID=$(echo "$OUTPUT" | grep -oE 'id = "[^"]+"' | head -1 | cut -d'"' -f2)
+          if [ -z "$ID" ]; then
+            echo "::error::Could not parse the namespace id from wrangler's output above. wrangler's CLI output format may have changed — add the [[kv_namespaces]] block to wrangler.toml manually (see docs/DEPLOYMENT.md)."
+            exit 1
           fi
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
 
       - name: Write bindings into wrangler.toml
         env:
