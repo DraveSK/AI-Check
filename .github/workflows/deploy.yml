@@ -21,6 +21,11 @@ jobs:
       - run: npm ci
 
       - run: npm run build
+        env:
+          # Bakes the dashboard to talk to the real hosted API (sign-in,
+          # uploaded reports, Settings) instead of demo fixtures — see
+          # src/providers/index.tsx and docs/DEPLOYMENT.md.
+          VITE_PROVIDER_MODE: cloud-api
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
