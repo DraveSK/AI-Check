@@ -35,7 +35,7 @@ jobs:
 
       - name: Verify Cloudflare credentials
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           if ! npx wrangler whoami; then
             echo "::error::wrangler whoami failed — CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is missing/invalid."
             echo "See docs/DEPLOYMENT.md §Prerequisites for the exact token permissions needed."
@@ -45,7 +45,7 @@ jobs:
       - name: Create or find D1 database
         id: d1
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           LIST_OUTPUT=$(npx wrangler d1 list --json)
           LIST_STATUS=$?
           if [ $LIST_STATUS -ne 0 ]; then
@@ -84,7 +84,7 @@ jobs:
         # (no id) — so this just attempts creation and tolerates an
         # already-exists error instead of listing first.
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           OUTPUT=$(npx wrangler r2 bucket create "$R2_NAME" 2>&1)
           STATUS=$?
           echo "$OUTPUT"
@@ -103,7 +103,7 @@ jobs:
         # list-output parsing that can't be verified without a live
         # account (see docs/DEPLOYMENT.md).
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           OUTPUT=$(npx wrangler kv namespace create "$KV_TITLE" 2>&1)
           STATUS=$?
           echo "$OUTPUT"
