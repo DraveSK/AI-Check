@@ -1,0 +1,12 @@
+name = "drave-ai-check"
+compatibility_date = "2026-07-11"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "drave-ai-check"
+database_id = "replace-with-d1-database-id"
+
+[[r2_buckets]]
+binding = "REPORTS"
+bucket_name = "drave-inspection-reports"
