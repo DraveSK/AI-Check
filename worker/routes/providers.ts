@@ -33,7 +33,15 @@ export async function upsertProvider(ctx: RouteContext): Promise<Response> {
   const parsed = safeParseJSON(apiKeyUpsertSchema, body);
   if (!parsed.success) return apiError('invalid_request', 'provider and apiKey are required.', parsed.errors);
 
-  const { ciphertext, iv } = await encryptSecret(parsed.data.apiKey, ctx.env.ENCRYPTION_KEY!);
+  let ciphertext: string, iv: string;
+  try {
+    ({ ciphertext, iv } = await encryptSecret(parsed.data.apiKey, ctx.env.ENCRYPTION_KEY!));
+  } catch (error) {
+    // Surfacing this is safe — the thrown message describes the
+    // ENCRYPTION_KEY *configuration* (e.g. wrong length), never any key
+    // material — see worker/lib/crypto.ts.
+    return apiError('not_configured', error instanceof Error ? error.message : 'ENCRYPTION_KEY is misconfigured.');
+  }
   await upsertApiKey(ctx.env.DB!, user.id, parsed.data.provider, ciphertext, iv);
   // Never log the key itself — only that a key was added.
   await recordAudit(ctx.env.DB!, user.id, 'provider.key_added', { provider: parsed.data.provider });

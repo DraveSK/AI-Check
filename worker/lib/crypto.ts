@@ -5,9 +5,12 @@
  */
 
 async function importKey(base64Key: string): Promise<CryptoKey> {
-  const raw = Uint8Array.from(atob(base64Key), (c) => c.charCodeAt(0));
+  // `wrangler secret put` / a pasted value can easily pick up a trailing
+  // newline or surrounding whitespace — trim before decoding rather than
+  // failing on an otherwise-correct key.
+  const raw = Uint8Array.from(atob(base64Key.trim()), (c) => c.charCodeAt(0));
   if (raw.length !== 32) {
-    throw new Error('ENCRYPTION_KEY must decode to exactly 32 bytes (AES-256). See docs/DEPLOYMENT.md.');
+    throw new Error(`ENCRYPTION_KEY must decode to exactly 32 bytes (AES-256) — got ${raw.length}. Generate one with: openssl rand -base64 32. See docs/DEPLOYMENT.md.`);
   }
   return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
