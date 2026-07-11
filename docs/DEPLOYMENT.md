@@ -14,6 +14,25 @@ complete, from-zero path to a live deployment.
 - Node 22 and `npm` locally if you want to deploy by hand instead of via
   CI
 
+### API token permissions
+
+There are two different jobs and they need two different scopes — using a
+narrower token for the wrong job is the most common failure mode
+(`wrangler` errors with a generic `Authentication error [code: 10000]`,
+which doesn't say *which* permission is missing):
+
+| Workflow | Needs | Cloudflare dashboard token template |
+|---|---|---|
+| `deploy.yml` (routine deploys) | Workers Scripts:Edit | "Edit Cloudflare Workers" |
+| `provision-infra.yml` (one-time/rare) | the above **plus** D1:Edit, Workers R2 Storage:Edit, Workers KV Storage:Edit | **Create Custom Token** — add those four permissions explicitly |
+
+If `deploy.yml` already works but `provision-infra.yml` fails on its
+"Verify Cloudflare credentials" or "Create or find D1 database" step,
+the token needs to be re-created with the broader custom scope above and
+`CLOUDFLARE_API_TOKEN` updated in **Settings → Secrets and variables →
+Actions**. The same token can be used for both workflows — there's no
+need to keep two.
+
 ## One-time infrastructure setup
 
 The site works with **zero infrastructure**: static dashboard + API
