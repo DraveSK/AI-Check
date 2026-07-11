@@ -17,6 +17,8 @@ export interface DeviceInfo {
   platform: Platform;
   osVersion: string;
   lastInspectedAt: string | null;
+  /** e.g. "Mac15,6" — omitted where unavailable (mock data, other platforms). */
+  model?: string;
 }
 
 /** Every provider result carries this envelope so the UI can render
@@ -66,6 +68,13 @@ export interface StorageFolder {
   note?: string;
 }
 
+export interface StorageToolMeasurement {
+  id: string;
+  label: string;
+  path: string;
+  bytes: number;
+}
+
 export interface StorageSnapshot {
   totalBytes: number;
   usedBytes: number;
@@ -74,6 +83,12 @@ export interface StorageSnapshot {
   reclaimableBytes: number;
   categories: StorageCategory[];
   largestFolders: StorageFolder[];
+  /** Every known tool/cache signature that was found, regardless of size —
+   * kept alongside largestFolders (which is top-N only) so history
+   * comparisons can track e.g. "Docker" even when it isn't currently one
+   * of the largest folders on disk. Omitted by providers that don't
+   * measure this (mock data). */
+  tools?: StorageToolMeasurement[];
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +208,54 @@ export interface HistoryEntry {
   deviceName: string;
   inspectedAt: string;
   healthScore: number;
+  // Additive fields for Storage History & Comparison — optional so older
+  // history entries (or providers that don't track them) remain valid.
+  usedBytes?: number;
+  totalBytes?: number;
+  reclaimableBytes?: number;
+  largestFolderLabel?: string;
+  largestFolderBytes?: number;
+  /** Signed delta in `usedBytes` vs. the scan immediately before this one.
+   * Positive = grew, negative = shrank, undefined = no previous scan to
+   * compare against (e.g. the very first scan). */
+  changeBytes?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Comparison (derived from two InspectionReports — not itself part of the
+// InspectionReport contract, so it is exempt from SCHEMA.md's versioning
+// rules for that type. See docs/HISTORY_FORMAT.md.)
+// ---------------------------------------------------------------------------
+
+export interface FolderDelta {
+  label: string;
+  path: string;
+  previousBytes: number;
+  currentBytes: number;
+  deltaBytes: number;
+}
+
+export interface ComparisonInsight {
+  id: string;
+  message: string;
+  tone: 'growth' | 'recovered' | 'neutral';
+}
+
+export interface ComparisonResult {
+  previous: { id: string; collectedAt: string };
+  current: { id: string; collectedAt: string };
+  newFolders: StorageFolder[];
+  removedFolders: StorageFolder[];
+  grown: FolderDelta[];
+  shrunk: FolderDelta[];
+  unchanged: FolderDelta[];
+  biggestGrowth: FolderDelta | null;
+  biggestCleanup: FolderDelta | null;
+  /** current.storage.usedBytes - previous.storage.usedBytes (signed). */
+  totalDeltaBytes: number;
+  /** Sum of all shrinkage — always >= 0. */
+  recoveredBytes: number;
+  insights: ComparisonInsight[];
 }
 
 // ---------------------------------------------------------------------------

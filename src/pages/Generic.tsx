@@ -95,47 +95,19 @@ function HealthBreakdownList() {
   );
 }
 
-function HistoryList() {
-  const providers = useProviders();
-  const history = useProviderData(() => providers.history.getHistory('active'));
-  return (
-    <ProviderGate result={history} emptyLabel="No inspections recorded yet.">
-      {(entries) => (
-        <>
-          {entries.map((entry) => (
-            <div className="row" key={entry.id}>
-              <span className="file">
-                <span className="row-icon">
-                  <Check size={15} />
-                </span>
-                {entry.deviceName}
-              </span>
-              <span className="row-sub">{entry.inspectedAt}</span>
-              <Pill tone="green">{entry.healthScore}/100</Pill>
-              <button className="icon-button">
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          ))}
-        </>
-      )}
-    </ProviderGate>
-  );
-}
-
 const PAGE_COPY: Partial<Record<Page, string>> = {
   'Cleanup Recommendation': 'Clear space with a safe, AI-reviewed cleanup plan.',
-  History: 'Review the health of your devices over time.',
   Settings: 'Configure how AI Check inspects and protects your devices.',
 };
 
 const PAGE_HEADING: Partial<Record<Page, string>> = {
-  History: 'Inspection history',
   'Cleanup Recommendation': 'Recommended actions',
 };
 
 /** Generic list-detail layout shared by Cleanup, Performance, Health Score,
- * History and Settings — each sources its rows from a different provider. */
+ * and Settings — each sources its rows from a different provider. History
+ * has its own dedicated page (src/pages/History.tsx) since it needs scan
+ * selection and comparison, not just a list. */
 export function Generic({ page }: { page: Page }) {
   const list =
     page === 'Cleanup Recommendation' ? (
@@ -145,7 +117,7 @@ export function Generic({ page }: { page: Page }) {
     ) : page === 'Health Score' ? (
       <HealthBreakdownList />
     ) : (
-      <HistoryList />
+      <p className="changes-empty">Settings aren't implemented yet.</p>
     );
 
   return (

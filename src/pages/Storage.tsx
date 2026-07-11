@@ -5,6 +5,7 @@ import { ProviderGate } from '../components/ProviderGate';
 import { useProviders } from '../providers';
 import { useProviderData } from '../hooks/useProviderData';
 import { formatBytes, splitBytes } from '../utils/format';
+import { downloadFile } from '../utils/exportReport';
 
 export function StoragePage() {
   const providers = useProviders();
@@ -17,7 +18,11 @@ export function StoragePage() {
         title="Storage Analyzer"
         copy="A complete map of your disk usage, organized for action."
         action={
-          <button className="button">
+          <button
+            className="button"
+            disabled={!storage.data}
+            onClick={() => storage.data && downloadFile('ai-check-storage.json', JSON.stringify(storage.data, null, 2), 'application/json')}
+          >
             <Command size={15} /> Export report
           </button>
         }

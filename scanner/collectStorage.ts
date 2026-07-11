@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { statfsSync } from 'node:fs';
-import type { StorageCategory, StorageFolder, StorageSnapshot } from '../src/types';
+import type { StorageCategory, StorageFolder, StorageSnapshot, StorageToolMeasurement } from '../src/types';
 import { directorySize, pathExists } from './fsSize.js';
 import { KNOWN_TOOLS, type ToolSignature } from './signatures.js';
 
@@ -104,6 +104,12 @@ export async function collectStorage(): Promise<StorageCollectionResult> {
     reclaimableBytes: 0,
     categories,
     largestFolders,
+    // Full tool list (not just the top-N folders) so history comparisons
+    // can track e.g. Docker even when it isn't currently among the
+    // largest folders — see docs/HISTORY_FORMAT.md.
+    tools: tools.map(
+      (t): StorageToolMeasurement => ({ id: t.id, label: t.label, path: join(homedir(), t.relativePath), bytes: t.bytes }),
+    ),
   };
 
   const downloadsBytes = folders.find((f) => f.label === 'Downloads')?.bytes ?? 0;

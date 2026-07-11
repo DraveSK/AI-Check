@@ -1,5 +1,6 @@
 import { hostname, platform, release } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import type { DeviceInfo, InspectionReport } from '../src/types';
 import { collectStorage } from './collectStorage.js';
 import { buildCleanupItems } from './rules.js';
@@ -11,6 +12,16 @@ function detectPlatform(): DeviceInfo['platform'] {
   if (p === 'darwin') return 'macos';
   if (p === 'win32') return 'windows';
   return 'linux';
+}
+
+/** `sysctl -n hw.model` — metadata only (e.g. "Mac15,6"), not a serial
+ * number or any other identifying data. Never fails the scan if absent. */
+function macModel(): string | undefined {
+  try {
+    return execFileSync('sysctl', ['-n', 'hw.model'], { encoding: 'utf-8' }).trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Runs the storage collector and assembles one InspectionReport. Security,
@@ -33,6 +44,7 @@ export async function runScan(): Promise<InspectionReport> {
     platform: 'macos',
     osVersion: `macOS ${release()}`,
     lastInspectedAt: new Date().toISOString(),
+    model: macModel(),
   };
 
   const report: InspectionReport = {

@@ -3,6 +3,7 @@ import type { ProviderRegistry } from '../types';
 import {
   mockAIReport,
   mockCleanup,
+  mockComparison,
   mockCrypto,
   mockDevice,
   mockDeveloperEnvironment,
@@ -60,5 +61,6 @@ export const mockProviders: ProviderRegistry = {
   },
   history: {
     getHistory: () => ready(mockHistory),
+    getComparison: () => ready(mockComparison),
   },
 };

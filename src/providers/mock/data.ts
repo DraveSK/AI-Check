@@ -10,6 +10,7 @@
 import type {
   AIReportSnapshot,
   CleanupSnapshot,
+  ComparisonResult,
   CryptoSnapshot,
   DeveloperEnvironmentSnapshot,
   DeviceInfo,
@@ -170,7 +171,29 @@ export const mockAIReport: AIReportSnapshot = {
 };
 
 export const mockHistory: HistoryEntry[] = [
-  { id: 'h1', deviceName: 'MacBook Pro', inspectedAt: 'Today, 09:41', healthScore: 92 },
-  { id: 'h2', deviceName: 'MacBook Pro', inspectedAt: 'Yesterday, 18:23', healthScore: 88 },
-  { id: 'h3', deviceName: 'MacBook Pro', inspectedAt: 'Jul 8, 11:17', healthScore: 89 },
+  { id: 'h1', deviceName: 'MacBook Pro', inspectedAt: 'Today, 09:41', healthScore: 92, usedBytes: 472 * GB, totalBytes: 512 * GB, reclaimableBytes: 104 * GB, largestFolderLabel: 'Applications', largestFolderBytes: 102 * GB, changeBytes: 6 * GB },
+  { id: 'h2', deviceName: 'MacBook Pro', inspectedAt: 'Yesterday, 18:23', healthScore: 88, usedBytes: 466 * GB, totalBytes: 512 * GB, reclaimableBytes: 98 * GB, largestFolderLabel: 'Applications', largestFolderBytes: 101 * GB, changeBytes: -3 * GB },
+  { id: 'h3', deviceName: 'MacBook Pro', inspectedAt: 'Jul 8, 11:17', healthScore: 89, usedBytes: 469 * GB, totalBytes: 512 * GB, reclaimableBytes: 96 * GB, largestFolderLabel: 'Applications', largestFolderBytes: 100 * GB },
 ];
+
+export const mockComparison: ComparisonResult = {
+  previous: { id: 'h2', collectedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
+  current: { id: 'h1', collectedAt: new Date().toISOString() },
+  newFolders: [],
+  removedFolders: [],
+  grown: [
+    { label: 'Docker', path: '~/Library/Containers/com.docker.docker', previousBytes: 72 * GB, currentBytes: 84 * GB, deltaBytes: 12 * GB },
+  ],
+  shrunk: [
+    { label: 'Downloads', path: '~/Downloads', previousBytes: 41 * GB, currentBytes: 23 * GB, deltaBytes: -18 * GB },
+  ],
+  unchanged: [],
+  biggestGrowth: { label: 'Docker', path: '~/Library/Containers/com.docker.docker', previousBytes: 72 * GB, currentBytes: 84 * GB, deltaBytes: 12 * GB },
+  biggestCleanup: { label: 'Downloads', path: '~/Downloads', previousBytes: 41 * GB, currentBytes: 23 * GB, deltaBytes: -18 * GB },
+  totalDeltaBytes: 6 * GB,
+  recoveredBytes: 18 * GB,
+  insights: [
+    { id: 'docker-growth', message: 'Docker grew by 12 GB. Review unused images.', tone: 'growth' },
+    { id: 'downloads-cleanup', message: 'Downloads shrank by 18 GB since the last scan.', tone: 'recovered' },
+  ],
+};

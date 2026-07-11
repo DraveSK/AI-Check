@@ -1,6 +1,7 @@
 import type {
   AIReportSnapshot,
   CleanupSnapshot,
+  ComparisonResult,
   CryptoSnapshot,
   DeveloperEnvironmentSnapshot,
   DeviceInfo,
@@ -70,6 +71,11 @@ export interface AIReportProvider {
 
 export interface HistoryProvider {
   getHistory(deviceId: string): Promise<ProviderResult<HistoryEntry[]>>;
+  /** Diffs two previously-scanned reports by id (as returned in
+   * `HistoryEntry.id`). Implementations should return `status: 'empty'`
+   * rather than an error when either id can't be resolved (e.g. history
+   * was pruned) — see docs/HISTORY_FORMAT.md. */
+  getComparison(previousId: string, currentId: string): Promise<ProviderResult<ComparisonResult>>;
 }
 
 /** Aggregate of every provider the dashboard depends on. Composed once at

@@ -1,9 +1,10 @@
-import { Activity, Archive, ArrowUpRight, Bot, CircleAlert, HardDrive, Play, ShieldCheck, Sparkles, Zap } from 'lucide-react';
+import { Activity, Archive, ArrowUpRight, Bot, CircleAlert, Clock3, HardDrive, Play, ShieldCheck, Sparkles, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 import { Card, Meter, Pill, PageTitle } from '../components/ui';
 import { ProviderGate } from '../components/ProviderGate';
 import { useProviders } from '../providers';
 import { useProviderData } from '../hooks/useProviderData';
 import { formatBytes, splitBytes } from '../utils/format';
+import { timeSince } from '../utils/compareReports';
 import type { Page } from '../config/navigation';
 
 export function Overview({ setPage }: { setPage: (p: Page) => void }) {
@@ -15,6 +16,12 @@ export function Overview({ setPage }: { setPage: (p: Page) => void }) {
   const security = useProviderData(() => providers.security.getSecuritySnapshot('active'));
   const cleanup = useProviderData(() => providers.cleanup.getCleanupSnapshot('active'));
   const aiReport = useProviderData(() => providers.aiReport.getAIReport('active'));
+  const history = useProviderData(() => providers.history.getHistory('active'));
+  const comparison = useProviderData(async () => {
+    const entries = history.data;
+    if (!entries || entries.length < 2) return { status: 'empty' as const, data: null, source: 'local-scanner' as const };
+    return providers.history.getComparison(entries[1].id, entries[0].id);
+  }, [history.data]);
 
   const deviceName = device.data?.name ?? 'your device';
 
@@ -253,6 +260,91 @@ export function Overview({ setPage }: { setPage: (p: Page) => void }) {
             Read full AI report <ArrowUpRight size={15} />
           </button>
           <div className="bot-orb">✦</div>
+        </Card>
+      </div>
+
+      <div className="grid two lower">
+        <Card className="changes-card">
+          <div className="card-head">
+            <div>
+              <h2>Storage changes</h2>
+              <p>What's different since your last scan</p>
+            </div>
+            <button onClick={() => setPage('History')} className="ghost">
+              Scan history <ArrowUpRight size={15} />
+            </button>
+          </div>
+          {!history.data || history.data.length < 2 ? (
+            <p className="changes-empty">
+              {history.data && history.data.length === 1
+                ? 'This is your first scan. Run npm run scan again later to see what changed.'
+                : 'No scans yet. Run npm run scan to get started.'}
+            </p>
+          ) : (
+            <ProviderGate result={comparison} emptyLabel="Comparison unavailable for these scans.">
+              {(data) => (
+                <div className="changes-grid">
+                  <div className="changes-stat">
+                    <span>Biggest growth</span>
+                    <b className={data.biggestGrowth ? 'growth' : ''}>
+                      {data.biggestGrowth ? `${data.biggestGrowth.label} +${formatBytes(data.biggestGrowth.deltaBytes)}` : 'None'}
+                    </b>
+                  </div>
+                  <div className="changes-stat">
+                    <span>Biggest cleanup</span>
+                    <b className={data.biggestCleanup ? 'recovered' : ''}>
+                      {data.biggestCleanup ? `${data.biggestCleanup.label} -${formatBytes(Math.abs(data.biggestCleanup.deltaBytes))}` : 'None'}
+                    </b>
+                  </div>
+                  <div className="changes-stat">
+                    <span>Total difference</span>
+                    <b className={data.totalDeltaBytes > 0 ? 'growth' : data.totalDeltaBytes < 0 ? 'recovered' : ''}>
+                      {data.totalDeltaBytes === 0 ? '0 B' : `${data.totalDeltaBytes > 0 ? '+' : '-'}${formatBytes(Math.abs(data.totalDeltaBytes))}`}
+                    </b>
+                  </div>
+                  <div className="changes-stat">
+                    <span>Recovered space</span>
+                    <b className="recovered">{formatBytes(data.recoveredBytes)}</b>
+                  </div>
+                  <div className="changes-stat">
+                    <span>Last scan</span>
+                    <b>{new Date(data.current.collectedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</b>
+                  </div>
+                  <div className="changes-stat">
+                    <span>Time since last scan</span>
+                    <b>{timeSince(data.current.collectedAt)}</b>
+                  </div>
+                </div>
+              )}
+            </ProviderGate>
+          )}
+        </Card>
+
+        <Card>
+          <div className="card-head">
+            <div>
+              <h2>Trend</h2>
+              <p>At a glance</p>
+            </div>
+          </div>
+          {comparison.data ? (
+            <div className="trend-summary">
+              {comparison.data.totalDeltaBytes >= 0 ? (
+                <TrendingUp size={22} className="growth" />
+              ) : (
+                <TrendingDown size={22} className="recovered" />
+              )}
+              <p>
+                Storage {comparison.data.totalDeltaBytes >= 0 ? 'grew' : 'shrank'} by{' '}
+                <b>{formatBytes(Math.abs(comparison.data.totalDeltaBytes))}</b> since{' '}
+                {timeSince(comparison.data.previous.collectedAt)}.
+              </p>
+            </div>
+          ) : (
+            <p className="changes-empty">
+              <Clock3 size={16} /> Not enough scans yet to show a trend.
+            </p>
+          )}
         </Card>
       </div>
     </>
