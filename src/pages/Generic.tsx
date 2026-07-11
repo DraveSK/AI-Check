@@ -97,27 +97,24 @@ function HealthBreakdownList() {
 
 const PAGE_COPY: Partial<Record<Page, string>> = {
   'Cleanup Recommendation': 'Clear space with a safe, AI-reviewed cleanup plan.',
-  Settings: 'Configure how AI Check inspects and protects your devices.',
 };
 
 const PAGE_HEADING: Partial<Record<Page, string>> = {
   'Cleanup Recommendation': 'Recommended actions',
 };
 
-/** Generic list-detail layout shared by Cleanup, Performance, Health Score,
- * and Settings — each sources its rows from a different provider. History
- * has its own dedicated page (src/pages/History.tsx) since it needs scan
- * selection and comparison, not just a list. */
+/** Generic list-detail layout shared by Cleanup, Performance, and Health
+ * Score — each sources its rows from a different provider. History
+ * (src/pages/History.tsx) and Settings (src/pages/Settings.tsx) have
+ * their own dedicated pages since they need more than a list. */
 export function Generic({ page }: { page: Page }) {
   const list =
     page === 'Cleanup Recommendation' ? (
       <CleanupList />
     ) : page === 'Performance Analyzer' ? (
       <PerformanceList />
-    ) : page === 'Health Score' ? (
-      <HealthBreakdownList />
     ) : (
-      <p className="changes-empty">Settings aren't implemented yet.</p>
+      <HealthBreakdownList />
     );
 
   return (

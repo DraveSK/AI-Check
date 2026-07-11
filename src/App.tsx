@@ -12,6 +12,7 @@ import { Crypto } from './pages/Crypto';
 import { Report } from './pages/Report';
 import { HistoryPage } from './pages/History';
 import { Generic } from './pages/Generic';
+import { SettingsPage } from './pages/Settings';
 import { Login } from './pages/Login';
 import { useCloudAuth } from './hooks/useCloudAuth';
 
@@ -37,6 +38,8 @@ function Dashboard() {
       <Report setPage={setPage} />
     ) : page === 'History' ? (
       <HistoryPage />
+    ) : page === 'Settings' ? (
+      <SettingsPage />
     ) : (
       <Generic page={page} />
     );

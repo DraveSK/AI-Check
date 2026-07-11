@@ -44,5 +44,10 @@
 .login-card .privacy-note{margin-top:24px!important}
 .login-error{color:#db6a55;font-size:12px;margin-top:10px}
 
+/* Settings */
+.settings-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:15px;padding-top:15px;border-top:1px solid var(--line)}
+.settings-form select,.settings-form input{height:36px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);font-size:12px}
+.settings-form input[type=password],.settings-form input[type=text]{flex:1;min-width:140px}
+
 /* Brand and desktop rhythm */
 .brand{height:58px;padding:0 8px 14px;align-items:center}.brand img{display:block;width:31px;height:31px;object-fit:cover;object-position:center;border-radius:9px;background:#fff;padding:1px}.brand span{font:800 16px Manrope,sans-serif;letter-spacing:-.7px}.content{max-width:1240px;padding:38px 48px 64px}.page-title{margin-bottom:25px}@media(min-width:1440px){.content{padding-left:54px;padding-right:54px}}@media(max-width:1000px){.brand{height:57px;padding:0;justify-content:center}.brand img{width:38px;height:38px;border-radius:10px}.brand span{display:none}.content{padding-left:32px;padding-right:32px}}
