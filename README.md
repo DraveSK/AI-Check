@@ -3,10 +3,6 @@
 **AI Check** is an AI-powered, privacy-first device inspection platform
 that helps people understand, optimize, and protect their computers.
 
-# AI Check
-
-**AI Check** is a privacy-first, AI-powered computer inspection platform that helps users understand, optimize, and protect their devices.
-
 Unlike traditional "cleaner" applications, AI Check does **not automatically delete files**. It analyzes system metadata and provides intelligent recommendations while keeping users in full control.
 
 ## Key Features
