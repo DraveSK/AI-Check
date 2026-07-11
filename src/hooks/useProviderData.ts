@@ -34,7 +34,8 @@ export function useProviderData<T>(
           });
         }
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // `deps` is caller-supplied on purpose (mirrors useEffect) — there is
+    // no exhaustive-deps plugin configured to lint this against.
   }, deps);
 
   return result;

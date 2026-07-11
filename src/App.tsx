@@ -10,7 +10,10 @@ import { SecurityPage } from './pages/Security';
 import { Developer } from './pages/Developer';
 import { Crypto } from './pages/Crypto';
 import { Report } from './pages/Report';
+import { HistoryPage } from './pages/History';
 import { Generic } from './pages/Generic';
+import { Login } from './pages/Login';
+import { useCloudAuth } from './hooks/useCloudAuth';
 
 function Dashboard() {
   const [page, setPage] = useState<Page>('Overview');
@@ -32,6 +35,8 @@ function Dashboard() {
       <Crypto />
     ) : page === 'AI Report' ? (
       <Report setPage={setPage} />
+    ) : page === 'History' ? (
+      <HistoryPage />
     ) : (
       <Generic page={page} />
     );
@@ -116,10 +121,20 @@ function Dashboard() {
   );
 }
 
+function Gate() {
+  const isCloudApi = import.meta.env.VITE_PROVIDER_MODE === 'cloud-api';
+  const auth = useCloudAuth();
+
+  if (!isCloudApi) return <Dashboard />;
+  if (auth.status === 'checking') return null;
+  if (auth.status === 'signed-out') return <Login />;
+  return <Dashboard />;
+}
+
 export default function App() {
   return (
     <ProviderRoot>
-      <Dashboard />
+      <Gate />
     </ProviderRoot>
   );
 }

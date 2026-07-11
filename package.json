@@ -7,7 +7,16 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "scan": "tsx scanner/cli.ts"
+    "scan": "tsx scanner/cli.ts",
+    "login": "tsx scanner/login.ts",
+    "typecheck:app": "tsc -b --force",
+    "typecheck:worker": "tsc -p tsconfig.worker.json",
+    "typecheck:scanner": "tsc -p tsconfig.scanner.json",
+    "typecheck": "npm run typecheck:app && npm run typecheck:worker && npm run typecheck:scanner",
+    "lint": "eslint .",
+    "db:migrate:local": "wrangler d1 migrations apply ai-check-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply ai-check-db --remote",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "@tailwindcss/vite": "latest",
@@ -18,12 +27,16 @@
     "react-dom": "latest",
     "tailwindcss": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260711.1",
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "tsx": "^4.23.0"
+    "eslint": "^10.7.0",
+    "tsx": "^4.23.0",
+    "typescript-eslint": "^8.63.0"
   }
 }

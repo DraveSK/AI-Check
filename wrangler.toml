@@ -1,9 +1,33 @@
 name = "ai-check"
-main = "src/worker.ts"
+main = "worker/index.ts"
 compatibility_date = "2026-07-11"
+compatibility_flags = ["nodejs_compat"]
 
 [assets]
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = true
+
+# D1, R2, and KV bindings are added by the "Provision Cloudflare
+# Infrastructure" GitHub Action (.github/workflows/provision-infra.yml),
+# not committed here by default — see docs/DEPLOYMENT.md. This keeps the
+# site deployable (static dashboard + API returning 501 "not_configured"
+# for endpoints that need them) before those resources exist, instead of
+# `wrangler deploy` failing on a placeholder database_id.
+#
+# Once provisioned, this file will contain:
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "ai-check-db"
+# database_id = "<real-id>"
+# migrations_dir = "d1/migrations"
+#
+# [[r2_buckets]]
+# binding = "REPORTS"
+# bucket_name = "ai-check-reports"
+#
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT"
+# id = "<real-id>"

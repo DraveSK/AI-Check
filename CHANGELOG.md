@@ -3,7 +3,121 @@
 All notable changes to this project are documented in this file. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased] — v0.4 Storage Analyzer MVP (macOS)
+## [Unreleased] — v0.5 Production SaaS Backend
+
+### Added
+
+- **Real REST API** on Cloudflare Workers (`worker/`): `/api/v1/auth/*`
+  (magic link, verify, logout, me), `/api/v1/device`, `/api/v1/report`
+  (upload/get/history/compare), `/api/v1/analyze`, `/api/v1/settings`,
+  `/api/v1/providers` (BYO AI keys), `/api/v1/export` — consistent JSON
+  envelopes, proper status codes, `X-Request-Id` on every response
+- **D1 schema + migrations** (`d1/migrations/0001_init.sql`): users,
+  sessions, magic_links, devices, reports, api_keys, settings,
+  audit_logs — with indexes, FKs, and hash-only token storage
+- **Magic-link authentication**: no passwords anywhere; HttpOnly/Secure/
+  SameSite=Lax session cookies for the browser, the same token as Bearer
+  auth for the scanner CLI; no-user-enumeration responses; rate limited
+- **AES-256-GCM encryption** for stored BYO AI provider keys
+  (`worker/lib/crypto.ts`, key from the `ENCRYPTION_KEY` secret); no
+  endpoint ever returns a key
+- **AI provider layer** (`worker/lib/ai/`): one `AIProvider` interface;
+  Anthropic, OpenAI, Gemini, OpenRouter, Azure OpenAI, and Ollama
+  implementations; structured-JSON responses only; provider failures
+  degrade to `502` without affecting recommendations
+- **Zod validation** (`worker/lib/validation.ts`) on every request body,
+  including full `InspectionReport` validation on upload — invalid
+  reports rejected, never partially stored
+- **Rate limiting** via KV (`worker/lib/ratelimit.ts`): auth 5/15min/IP,
+  uploads 30/hr, analysis 20/hr
+- **Structured logging** (`worker/lib/log.ts`): JSON lines by category
+  with request IDs; secrets/tokens/keys never logged
+- **Scanner cloud pipeline**: `npm run login` (magic-link sign-in, session
+  stored in `~/.ai-check/session.json` mode 0600) and
+  `npm run scan -- --upload` (explicit opt-in upload)
+- **Dashboard cloud mode**: `cloud-api` provider registry
+  (`src/providers/cloud-api/`) + magic-link Login screen, active only
+  when built with `VITE_PROVIDER_MODE=cloud-api`
+- **CI** (`.github/workflows/ci.yml`): lint + 3-project typecheck + build
+  on every PR/push; ESLint config added
+- **Infra provisioning workflow**
+  (`.github/workflows/provision-infra.yml`): idempotent one-click
+  D1/R2/KV creation + migrations + binding commit + deploy trigger
+- `docs/DEPLOYMENT.md` — full Cloudflare setup, secrets, environments,
+  rollback, smoke test
+
+### Changed
+
+- Worker moved `src/worker.ts` → `worker/index.ts` with its own
+  `tsconfig.worker.json` (Workers types) alongside `tsconfig.scanner.json`
+  (Node types); `npm run typecheck` covers app + worker + scanner
+- `src/utils/exportReport.ts` split: pure formatters now in
+  `src/utils/exportFormat.ts` (DOM-free, shared with the Worker's export
+  route), browser download trigger stays in `exportReport.ts`
+- `docs/API.md` rewritten as the reference for the implemented API
+- `ARCHITECTURE.md`, `SECURITY.md`, `PRIVACY.md`, `README.md`,
+  `ROADMAP.md` updated to the production architecture
+
+### Removed
+
+- `functions/api/inspections.ts` — the last demo endpoint (unvalidated
+  writes, hardcoded GET response). The dashboard's `mock` mode remains as
+  the explicit local-development default, but there is no fake production
+  path left.
+
+## v0.4.5 Storage History & Comparison
+
+### Added
+
+- `scanner/history.ts` — saves every scan to `.ai-check-history/` (local,
+  gitignored, never uploaded), with automatic pruning and a trimmed copy
+  published to `public/` for the dashboard to fetch
+- `src/utils/compareReports.ts` — pure `compareReports()` diff engine
+  (new/removed/grown/shrunk folders, biggest growth/cleanup, recovered
+  bytes, plain-text insights), plus `timeSince()` and
+  `computeHistoryStats()`; shared by the CLI's terminal summary and the
+  browser — one implementation, two call sites
+- `src/utils/exportReport.ts` — JSON/Markdown/HTML export for a report, a
+  comparison, or the full history, triggered by a plain browser download
+- Overview: new "Storage changes" card (biggest growth/cleanup, total
+  difference, recovered space, last scan, time since last scan) and a
+  trend summary card
+- New Scan History page (`src/pages/History.tsx`): cleanup statistics
+  (total recovered, largest cleanup ever, average recovery, trend, scan
+  count), a picker to compare any two of the last 20 scans, a color-coded
+  before/after table (green = recovered, red = growth, gray = no change),
+  and a full timeline
+- `docs/HISTORY_FORMAT.md` — local history file format, `ComparisonResult`
+  shape, retention/pruning, first-scan/single-scan handling
+
+### Changed
+
+- `DeviceInfo.model` (additive) — captured via `sysctl -n hw.model` on
+  macOS
+- `StorageSnapshot.tools` (additive) — every matched signature, not just
+  the top-10 folders, so history comparisons can track e.g. Docker even
+  when it isn't currently among the largest folders
+- `HistoryEntry` (additive fields) — `usedBytes`, `totalBytes`,
+  `reclaimableBytes`, `largestFolderLabel`, `largestFolderBytes`,
+  `changeBytes`
+- New `ComparisonResult` / `FolderDelta` / `ComparisonInsight` types —
+  explicitly **not** part of the `InspectionReport` contract, exempt from
+  `SCHEMA.md`'s versioning rules (see `docs/HISTORY_FORMAT.md`)
+- `HistoryProvider` gained `getComparison(previousId, currentId)`
+- **Fixed**: `formatBytes()` collapsed any negative value to `"0 B"`,
+  silently hiding shrinkage in the Timeline and exports — now formats
+  signed deltas correctly
+
+### Notes
+
+- Scan IDs are the report's `collectedAt` timestamp (filesystem-safe) —
+  no new ID field was added to `InspectionReport`.
+- Verified end-to-end on a real Mac: ran three real scans, including a
+  reversible ~150 MB test file to exercise both growth and recovery
+  paths; Overview, Storage Changes, and the History comparison view all
+  showed correct real numbers.
+
+## v0.4 Storage Analyzer MVP (macOS)
 
 ### Added
 

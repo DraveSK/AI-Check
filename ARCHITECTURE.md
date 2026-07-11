@@ -17,26 +17,27 @@
 │  CleanupProvider, AIReportProvider, HistoryProvider,           │
 │  DeviceProvider. Each returns a ProviderResult<T> envelope     │
 │  (loading/empty/error/ready) — see src/types/index.ts.        │
-│  Today: `mock` registry (src/providers/mock). Future:         │
-│  `local-scanner` and `cloud-api` registries, selected by       │
-│  VITE_PROVIDER_MODE, with no change to any screen.             │
+│  Three registries, selected by VITE_PROVIDER_MODE with no      │
+│  change to any screen: `mock` (fixtures), `local-report`       │
+│  (reads the JSON npm run scan writes), `cloud-api` (the        │
+│  hosted API below, gated by magic-link sign-in).               │
 └───────────────────────────┬────────────────────────────────┘
                              │ HTTPS (cloud-api provider only)
 ┌───────────────────────────▼────────────────────────────────┐
-│  API (functions/api/*, src/worker.ts)                         │
-│  Stable REST contract — see docs/API.md. Validates and        │
-│  stores InspectionReports, serves them back to providers,     │
-│  brokers AI analysis requests. Cloudflare Pages Functions /    │
-│  Worker today; contract is host-agnostic.                     │
+│  API (worker/index.ts + worker/routes/*)                      │
+│  One Cloudflare Worker: serves the built dashboard (ASSETS)   │
+│  and /api/v1/* in the same process. Zod-validates every       │
+│  request, stores reports (R2) + summaries (D1), brokers       │
+│  BYO-key AI analysis, rate-limits via KV. See docs/API.md.    │
 └───────────┬─────────────────────────────────┬───────────────┘
-            │ POST /api/v1/inspections          │ POST /api/v1/ai/report
+            │ POST /api/v1/report                │ POST /api/v1/analyze
 ┌───────────▼───────────────┐      ┌───────────▼───────────────┐
-│  Scanner (design only —    │      │  AI Engine (not built)     │
-│  see docs/SCANNER_SPEC.md) │      │  Bring-your-own-AI:         │
-│  Local, read-mostly CLI.   │      │  provider + model + API     │
-│  Produces one              │      │  key supplied by caller,    │
-│  InspectionReport JSON     │      │  never hardcoded to a        │
-│  per platform.             │      │  single vendor.              │
+│  Scanner (scanner/*)       │      │  AI Layer (worker/lib/ai)  │
+│  Local, read-mostly CLI    │      │  One AIProvider interface,  │
+│  (macOS Storage today).    │      │  six vendors (Anthropic,    │
+│  Local-first: uploads only │      │  OpenAI, Gemini, OpenRouter,│
+│  with an explicit --upload │      │  Azure, Ollama). BYO keys,  │
+│  flag + signed-in session. │      │  encrypted at rest.          │
 └───────────┬───────────────┘      └───────────┬───────────────┘
             │                                    │
             └──────────────┬─────────────────────┘
@@ -86,12 +87,15 @@ This buys three things:
 | Module | Path | Replaceable unit |
 |---|---|---|
 | Frontend | `src/pages`, `src/components`, `src/App.tsx` | Presentation only |
-| Providers | `src/providers` | Data-access strategy (mock / local-scanner / cloud-api) |
+| Providers | `src/providers` | Data-access strategy (`mock` / `local-report` / `cloud-api`) |
 | Shared Types | `src/types` | The one schema every layer agrees on |
-| Utilities | `src/utils`, `src/hooks` | Pure helpers, no domain logic |
+| Utilities | `src/utils`, `src/hooks` | Pure helpers (compare, export formatting), no domain logic |
 | Config | `src/config` | Navigation, environment-driven switches |
-| API | `functions/api`, `src/worker.ts` | Cloudflare today; contract in `docs/API.md` is host-agnostic |
-| Scanner | *(not yet implemented — see `docs/SCANNER_SPEC.md` and `docs/SCANNER_DESIGN.md`)* | Per-OS binary producing one JSON schema; collectors, signatures, rules, and AI explanation live as plain functions in one codebase — see "Extensibility" below for why this stays that simple |
+| API | `worker/index.ts`, `worker/routes`, `worker/lib` | Cloudflare Worker today; contract in `docs/API.md` is host-agnostic |
+| Database | `d1/migrations` | D1 (SQLite): users, sessions, devices, report summaries, encrypted BYO keys, audit log |
+| Object storage | R2 via `worker/lib/r2.ts` | Immutable `InspectionReport` JSON + AI analysis companions |
+| AI Layer | `worker/lib/ai` | One `AIProvider` interface, per-vendor files — swap vendors without touching the pipeline |
+| Scanner | `scanner/` (macOS Storage implemented; Windows/Linux per `docs/SCANNER_SPEC.md`) | Local CLI producing one `InspectionReport`; collectors, signatures, rules as plain functions |
 
 The scanner-side pipeline — collect → match known signatures → apply
 rules → recommend → generate a reviewable cleanup script → optionally
@@ -133,10 +137,33 @@ until there's a real second implementation that needs it.
   independent collectors. Add that layer when that's true, not in
   anticipation of it.
 
-## Deployment shape (current)
+## Deployment shape
 
-Cloudflare Pages/Workers, static assets served by a Worker with an
-`ASSETS` binding, D1 reserved for report metadata, R2 for immutable JSON
-report bodies (`wrangler.toml`, `src/worker.ts`). See the "Recommended
-Cloudflare deployment architecture" section of the Phase 1 final report for
-the target production topology.
+One Cloudflare Worker (`worker/index.ts`, configured in `wrangler.toml`)
+serves everything: the built dashboard via the `ASSETS` binding and the
+`/api/v1/*` REST API in the same process. Cloudflare services used, and
+deliberately nothing more:
+
+- **D1** — users, sessions, devices, report summaries, encrypted BYO API
+  keys, audit log (`d1/migrations/`)
+- **R2** — immutable `InspectionReport` JSON and AI analysis companions
+- **KV** — rate-limit counters only (`worker/lib/ratelimit.ts`)
+- **Not used, on purpose**: Queues (no background jobs exist — analysis
+  completes within a request), Turnstile (magic-link + rate limiting
+  covers current abuse surface), Images/Analytics (nothing to use them
+  for). Each gets added when a concrete need appears, not before.
+
+Every binding is optional at the type level (`worker/env.ts`): a route
+missing its binding returns `501 not_configured` instead of crashing, so
+the site deploys and serves the dashboard before any infrastructure is
+provisioned. Setup, secrets, environments, and rollback:
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Logging
+
+Structured JSON lines to the Worker's console (`worker/lib/log.ts`),
+tagged by category (`app` / `api` / `scanner` / `error`) with a per-request
+id echoed in the `X-Request-Id` response header. Cloudflare captures
+Worker console output natively (`wrangler tail`, dashboard Logs) — no
+third-party logging service, consistent with [PRIVACY.md](PRIVACY.md).
+Secrets, API keys, session tokens, and report contents are never logged.

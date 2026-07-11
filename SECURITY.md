@@ -92,6 +92,56 @@ normal PR review instead of a runtime trust boundary. If a real plugin
 system becomes necessary later, this document gets a corresponding
 threat-model section again at that time, not before.
 
+## Authentication & session security (implemented)
+
+- **Magic link only — no passwords exist anywhere in the system.** There
+  is nothing password-shaped to phish, stuff, or leak.
+- Magic-link tokens: 32 random bytes, 15-minute expiry, single-use, and
+  **only the SHA-256 hash is stored** (`magic_links.token_hash` in
+  `d1/migrations/0001_init.sql`) — a leaked database row cannot be used
+  to sign in.
+- Sessions: same hash-only storage (`sessions.id = sha256(token)`),
+  30-day expiry, delivered as an `HttpOnly; Secure; SameSite=Lax` cookie
+  (`worker/lib/auth.ts`) — unreadable from JavaScript, HTTPS-only, not
+  sent on cross-site requests. The scanner CLI uses the identical token
+  as a `Bearer` header, stored locally in `~/.ai-check/session.json` with
+  mode 0600.
+- The magic-link request endpoint returns the same response whether or
+  not the email is registered — no user enumeration — and is rate
+  limited (5 requests / 15 min / IP).
+- Logout deletes the session server-side, not just the cookie.
+
+## API key handling (BYO AI keys, implemented)
+
+- Keys are accepted once over HTTPS, encrypted immediately with
+  AES-256-GCM (`worker/lib/crypto.ts`; key material from the
+  `ENCRYPTION_KEY` Worker secret, never in the database), and stored as
+  ciphertext + IV in D1.
+- **No API endpoint ever returns a key** — `GET /api/v1/providers` lists
+  only provider name and creation date (see `worker/routes/providers.ts`).
+- Decryption happens transiently in Worker memory for a single upstream
+  AI call and the plaintext is never logged, never persisted, never
+  echoed in an error message.
+- Known limitation: rotating `ENCRYPTION_KEY` orphans stored keys (users
+  must re-enter them). Acceptable for the current scale; a re-encryption
+  migration is future work.
+
+## API-layer protections (implemented)
+
+- Every request body is Zod-validated (`worker/lib/validation.ts`);
+  uploads that fail `InspectionReport` validation are rejected outright,
+  never partially stored.
+- Rate limiting (KV fixed-window, `worker/lib/ratelimit.ts`): magic links
+  5/15min/IP, uploads 30/hr/user, AI analysis 20/hr/user.
+- Every report query is scoped `WHERE user_id = ?` in the SQL itself —
+  cross-user access is structurally impossible, not just unlinked.
+- Structured JSON logging with request IDs (`worker/lib/log.ts`);
+  secrets, tokens, keys, and report contents are never logged, and the
+  audit log (`audit_logs`) records actions, never payloads.
+- Missing infrastructure degrades to `501 not_configured`
+  (`worker/lib/guard.ts`) rather than an unhandled exception — the app
+  never crashes on a missing binding.
+
 ## Future security audit checklist
 
 To be run before v1.0 and before any GA claim of "production-ready":
@@ -119,8 +169,15 @@ To be run before v1.0 and before any GA claim of "production-ready":
 
 ## Known limitations today
 
-The current codebase is UI, architecture, and specifications only — there
-is still no scanner and no real API implementation, so most of the risks
-above are *designed against*, not yet *realized or verified*. This section
-will be updated as each component ships. See [ROADMAP.md](ROADMAP.md) for
-what's built vs. planned.
+- The scanner covers macOS Storage only; Security/Performance/Crypto
+  collectors are specified but not implemented (see
+  [ROADMAP.md](ROADMAP.md)) — the corresponding dashboard screens still
+  show mock data even in production mode.
+- No independent security audit or penetration test has been performed
+  yet (see the checklist above — it gates v1.0, and this is pre-1.0).
+- `ENCRYPTION_KEY` rotation orphans stored BYO keys (documented above).
+- KV rate limiting is approximate (eventually consistent) — abuse
+  mitigation, not a hard quota.
+- Ollama as an AI provider only works when the API is self-hosted on a
+  network that can reach the Ollama instance — a Cloudflare edge Worker
+  cannot reach a user's localhost (documented in `worker/lib/ai/ollama.ts`).

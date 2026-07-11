@@ -51,12 +51,19 @@ expect to justify it against this table.
 ## Local-first by default
 
 - The scanner runs on your device and produces a JSON report locally.
-- **Nothing is transmitted anywhere unless you explicitly configure a
-  submission target.** Dry-run/local-file mode is a first-class supported
-  workflow, not an afterthought — see [ROADMAP.md](ROADMAP.md) v0.4.
-- If you do submit a report to an API (self-hosted or Drave's hosted
-  service), only the `InspectionReport` payload described in
-  [API.md](docs/API.md) is sent — nothing beyond that schema.
+  `npm run scan` alone never makes a network request.
+- **Nothing is transmitted anywhere unless you explicitly pass the
+  `--upload` flag** (`npm run scan -- --upload`), and only after you've
+  explicitly signed in (`npm run login`). Local-only is the default
+  workflow, not a degraded mode — see [docs/HISTORY_FORMAT.md](docs/HISTORY_FORMAT.md).
+- If you do upload, only the `InspectionReport` payload described in
+  [docs/API.md](docs/API.md) is sent — the API's schema validation
+  rejects anything beyond it (`worker/lib/validation.ts`).
+- Hosted-service storage is exactly two object types: your uploaded
+  `InspectionReport` JSON and, if you request AI analysis, the structured
+  analysis result. Nothing else is stored in R2, and the D1 database holds
+  only account/session data plus report *summaries* (byte totals and
+  timestamps).
 
 ## AI analysis is opt-in and provider-agnostic
 

@@ -1,143 +1,168 @@
-# AI Check — API Contract
+# AI Check — API Reference
 
-This document is the stable contract between the **dashboard**, the **local
-scanner**, and the **API**. It is versioned independently of the UI: the
-dashboard must never assume anything about the API beyond what is written
-here, and the scanner must never emit a payload that doesn't validate
-against the `InspectionReport` schema in [`src/types/index.ts`](../src/types/index.ts).
-
-Status: **Draft — Phase 1 (architecture only). No endpoint below is backed by
-a real scanner or AI engine yet**; `functions/api/inspections.ts` and
-`src/worker.ts` currently return static demo data or persist whatever JSON
-they're given, unvalidated. Phase 2 replaces the demo bodies with real
-implementations behind these exact same routes.
+Status: **implemented.** Every endpoint below is live code in
+[`worker/routes/`](../worker/routes), served by the Cloudflare Worker
+([`worker/index.ts`](../worker/index.ts)) alongside the dashboard's static
+assets. Requests are validated with Zod
+([`worker/lib/validation.ts`](../worker/lib/validation.ts)) — never
+trusted as-is.
 
 ## Conventions
 
-- Base path: `/api/v1` (current demo code predates versioning and lives at
-  `/api/inspections`; Phase 2 introduces the `/v1` prefix — see
-  [ROADMAP.md](../ROADMAP.md)).
-- All bodies are JSON. `Content-Type: application/json` is required on every
+- Base path: `/api/v1`. Breaking changes get `/api/v2`, never a silent
+  change to v1 — same discipline as [SCHEMA.md](../SCHEMA.md).
+- All bodies are JSON; `Content-Type: application/json` required on every
   request with a body.
-- All responses use the envelope:
+- Success envelope:
   ```json
-  { "data": { }, "meta": { "generatedAt": "2026-07-11T09:41:00Z", "source": "local-scanner" } }
+  { "data": { }, "meta": { "generatedAt": "2026-07-11T09:41:00Z" } }
   ```
-  or, on failure:
+  Error envelope:
   ```json
-  { "error": { "code": "invalid_report", "message": "human-readable message" } }
+  { "error": { "code": "invalid_report", "message": "...", "details": [] } }
   ```
-- Timestamps are ISO 8601 UTC. Byte counts are always raw integers (bytes),
-  never pre-formatted strings — formatting is a UI concern
-  ([`src/utils/format.ts`](../src/utils/format.ts)).
-- Authentication (Phase 2+): a bearer token (`Authorization: Bearer <token>`)
-  tied to a workspace. The open-source local scanner may also run in
-  "unauthenticated local mode" against a self-hosted API with no cloud
-  component at all.
+- Error codes → HTTP status (see [`worker/lib/http.ts`](../worker/lib/http.ts)):
+  `invalid_request`/`invalid_report` → 400, `unauthorized` → 401,
+  `forbidden` → 403, `not_found` → 404, `rate_limited` → 429,
+  `internal_error` → 500, `not_configured` → 501 (a required Cloudflare
+  binding isn't provisioned yet — see [DEPLOYMENT.md](DEPLOYMENT.md)),
+  `upstream_error` → 502 (an AI provider call failed).
+- Every response includes an `X-Request-Id` header; quote it when
+  reporting a problem.
+- Timestamps are ISO 8601 UTC. Byte counts are raw integers, never
+  formatted strings.
+- Internal models are never exposed: every route returns an explicit
+  field whitelist (`pick()` in `worker/lib/http.ts`), not raw DB rows.
 
-## Endpoints
+## Authentication
 
-### `POST /api/v1/inspections`
+Magic-link only — no passwords exist anywhere in the system.
 
-Submitted by the **scanner** after a completed local scan. This is the one
-endpoint that is contract-critical: its request body **is**
-`InspectionReport` (see [`src/types/index.ts`](../src/types/index.ts)).
+Two session transports resolve through the same `sessions` table:
 
-Request body:
+- **Browser**: HttpOnly, Secure, SameSite=Lax cookie set by
+  `GET /auth/verify` (30-day expiry).
+- **Scanner CLI**: the same opaque token sent as
+  `Authorization: Bearer <token>` (obtained via `npm run login`, stored in
+  `~/.ai-check/session.json` with mode 0600).
 
-```jsonc
-{
-  "schemaVersion": "1.0",
-  "device": { "id": "uuid", "name": "MacBook Pro", "platform": "macos", "osVersion": "macOS Sequoia 15.2", "lastInspectedAt": null },
-  "storage": { "totalBytes": 0, "usedBytes": 0, "availableBytes": 0, "capacityPercent": 0, "reclaimableBytes": 0, "categories": [], "largestFolders": [] },
-  "security": { "malwareIndicatorsFound": false, "itemsNeedingReview": 0, "findings": [] },
-  "performance": { "cpuPercent": 0, "memoryPercent": 0, "sparkline": [], "metrics": [] },
-  "developerEnvironment": { "toolCount": 0, "totalBytes": 0, "tools": [] },
-  "crypto": { "walletsDetected": 0, "wallets": [] },
-  "cleanup": { "totalReclaimableBytes": 0, "items": [] },
-  "collectedAt": "2026-07-11T09:41:00Z",
-  "scannerVersion": "0.4.0"
-}
+Only SHA-256 hashes of tokens are stored server-side
+(`d1/migrations/0001_init.sql`) — a leaked database is not enough to
+hijack a session.
+
+### `POST /api/v1/auth/magic-link`
+
+Body: `{ "email": "you@example.com" }`. Always returns
+`200 { "data": { "sent": true } }` regardless of whether the address is
+registered — no user enumeration. Rate limited (5 / 15 min / IP). Links
+expire in 15 minutes and are single-use. Without `RESEND_API_KEY`
+configured, the link is logged to the Worker console instead of emailed
+(dev mode — see [`worker/lib/email.ts`](../worker/lib/email.ts)).
+
+### `GET /api/v1/auth/verify?token=...`
+
+Browser: consumes the token, sets the session cookie, 302-redirects to
+`/`. With `Accept: application/json` (the scanner CLI):
+`200 { "data": { "sessionToken", "expiresAt", "email" } }`.
+
+### `POST /api/v1/auth/logout` · `GET /api/v1/auth/me`
+
+Logout deletes the session and clears the cookie. `me` returns
+`{ id, email, created_at }` or `401`.
+
+## Devices
+
+### `GET /api/v1/device` 🔒
+
+Devices the user has uploaded reports from. Devices are created
+implicitly by report upload (unique per user + name + platform) — there
+is no separate registration step to get wrong.
+
+## Reports
+
+### `POST /api/v1/report` 🔒
+
+The scanner's upload endpoint (`npm run scan -- --upload`). Body is one
+`InspectionReport` (see [`src/types/index.ts`](../src/types/index.ts)),
+validated in full before anything persists — an invalid report is
+rejected with `400 invalid_report` + per-field details, never partially
+stored. Raw JSON goes to R2 (`reports/<userId>/<reportId>.json`,
+immutable); a queryable summary row goes to D1. Rate limited
+(30 / hour / user). Returns
+`201 { "data": { "id", "deviceId", "accepted": true } }`.
+
+### `GET /api/v1/report/:id` 🔒
+
+The full stored `InspectionReport`. Scoped to the signed-in user — you
+can never fetch another user's report, enforced in the D1 query itself.
+
+### `GET /api/v1/report/history?deviceId=` 🔒
+
+Lightweight summaries (id, device, bytes, timestamps), never full
+reports — the same index-vs-payload split as the local scanner's history
+(see [HISTORY_FORMAT.md](HISTORY_FORMAT.md)).
+
+### `GET /api/v1/report/compare?previousId=&currentId=` 🔒
+
+Returns a `ComparisonResult`. Runs the exact same pure `compareReports()`
+used by the dashboard and the scanner CLI
+([`src/utils/compareReports.ts`](../src/utils/compareReports.ts)) — one
+diff implementation, three call sites.
+
+## AI Analysis
+
+### `POST /api/v1/analyze` 🔒
+
+Body: `{ "reportId", "provider", "model" }`. Provider is one of
+`anthropic | openai | gemini | openrouter | azure-openai | ollama`. The
+pipeline (see [`worker/lib/ai/`](../worker/lib/ai)):
+
+```
+stored InspectionReport → prompt from already-final cleanup items
+  → provider call (structured JSON response, not free-form prose)
+  → validated StructuredAnalysis → AIReportSnapshot (+ stored in R2)
 ```
 
-Response `201`:
+AI **explains, never decides** — the response shape has no way to add,
+remove, or reclassify a recommendation (see
+[SCANNER_DESIGN.md](SCANNER_DESIGN.md) §AI). A provider failure returns
+`502 upstream_error`; recommendations are unaffected. Requires a BYO key
+for the chosen provider (below), except `ollama`. Rate limited
+(20 / hour / user).
 
-```json
-{ "data": { "id": "report-uuid", "accepted": true }, "meta": { "generatedAt": "..." } }
-```
+## BYO API Keys
 
-Errors: `400 invalid_report` (schema validation failed — reject, do not
-partially store), `401 unauthorized`, `413 payload_too_large`.
+### `GET /api/v1/providers` 🔒 · `POST /api/v1/providers` 🔒 · `DELETE /api/v1/providers/:provider` 🔒
 
-Server-side rules:
+POST body: `{ "provider", "apiKey" }`. The key is accepted once over
+HTTPS, AES-256-GCM encrypted immediately
+([`worker/lib/crypto.ts`](../worker/lib/crypto.ts), key material from the
+`ENCRYPTION_KEY` secret), and stored as ciphertext. **No endpoint ever
+returns a key** — GET lists only `{ provider, addedAt }`. Decryption
+happens transiently in Worker memory for a single upstream call and is
+never logged.
 
-- Validate the full payload against the `InspectionReport` schema before
-  persisting anything. Never trust `schemaVersion` alone — validate shape.
-- Store the raw payload immutably (R2, see [ARCHITECTURE.md](../ARCHITECTURE.md)); never mutate a submitted
-  report in place. Corrections are new reports.
-- Never inspect, log, or forward the contents of `security.findings[].detail`
-  or any field to a third party without the explicit AI-analysis opt-in
-  described in [PRIVACY.md](../PRIVACY.md).
+## Settings
 
-### `GET /api/v1/inspections/latest?deviceId=`
+### `GET /api/v1/settings` 🔒 · `PUT /api/v1/settings` 🔒
 
-Returns the most recent `InspectionReport` for a device. This is what
-`HealthProvider`, `StorageProvider`, etc. call in a `cloud-api` provider
-implementation (see [`src/providers/types.ts`](../src/providers/types.ts)).
+`{ "preferredAiProvider", "preferredAiModel" }` — which provider/model
+`analyze` should use by default.
 
-Response `200`:
+## Export
 
-```json
-{ "data": { "...InspectionReport" }, "meta": { "generatedAt": "...", "source": "cloud-api" } }
-```
+### `GET /api/v1/export?reportId=&format=` 🔒
 
-Response `404` (`no_reports`) if the device has never submitted a report —
-providers must map this to `ProviderResult.status = 'empty'`, not `'error'`.
+`format` = `json | markdown | html`. Returns the formatted report as a
+file download. Uses the same pure formatters as the dashboard's
+client-side export ([`src/utils/exportFormat.ts`](../src/utils/exportFormat.ts)).
 
-### `GET /api/v1/inspections/history?deviceId=&limit=`
+## Non-goals
 
-Returns a list of lightweight `HistoryEntry` records (id, device name,
-timestamp, health score) — never full reports, to keep the endpoint cheap.
-Backs `HistoryProvider`.
-
-### `POST /api/v1/ai/report`
-
-Triggers AI analysis of a stored inspection report and returns an
-`AIReportSnapshot`. This is the paid/closed-source boundary described in
-[OPEN_CORE.md](../OPEN_CORE.md) — the open-source `AIReportProvider` mock
-implementation never calls this endpoint; a `cloud-api` provider does.
-
-Because AI Check is **AI-agnostic**, the request lets the caller specify
-which provider/key to use — the API never bundles a hardcoded model:
-
-```json
-{
-  "reportId": "report-uuid",
-  "ai": { "provider": "anthropic", "model": "claude-sonnet-5", "apiKeyRef": "byo-key-id" }
-}
-```
-
-`apiKeyRef` references a key the user registered with their own workspace
-(bring-your-own-key) or, in the hosted paid tier, is omitted and Drave's
-managed key is used instead. Response is an `AIReportSnapshot`.
-
-### `POST /api/v1/cleanup/script`
-
-Given a `CleanupSnapshot` (or reportId), generates a reviewable shell/PowerShell
-script that performs the selected safe deletions. Returns the script as text
-plus a checksum — **the API never executes anything on the user's machine**;
-execution always happens locally, initiated by the user.
-
-### `GET /api/v1/devices`
-
-Lists devices in the caller's workspace (Phase 2+, requires auth).
-
-## Non-goals for this API
-
-- The API never receives file contents, only metadata described by the
-  `InspectionReport` schema (see [PRIVACY.md](../PRIVACY.md) for the exact
-  allow-list).
-- The API never issues commands back to the scanner. The relationship is
-  strictly scanner → API (submit) and dashboard → API (read), never
-  API → scanner (push/RPC). This keeps the scanner a simple, auditable CLI
-  with no listening network port.
+- The API never receives file contents — only the metadata allow-listed
+  in [PRIVACY.md](../PRIVACY.md), enforced by the upload schema.
+- The API never issues commands back to the scanner. Strictly
+  scanner → API (submit) and dashboard → API (read); the scanner remains
+  a one-shot CLI with no listening port.
+- No endpoint executes a cleanup command. Cleanup commands are display
+  strings the user reviews and runs themselves.

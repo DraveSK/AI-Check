@@ -1,0 +1,151 @@
+name: Provision Cloudflare Infrastructure
+
+# Manual, one-time (or re-run-safe) bootstrap: creates the D1 database, R2
+# bucket, and KV namespace this app needs, applies migrations, and commits
+# the resulting bindings into wrangler.toml. See docs/DEPLOYMENT.md.
+#
+# Safe to re-run: every step checks whether the resource already exists
+# before creating it, so running this twice does not create duplicates or
+# fail.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+env:
+  D1_NAME: ai-check-db
+  R2_NAME: ai-check-reports
+  KV_TITLE: ai-check-ratelimit
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Create or find D1 database
+        id: d1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(npx wrangler d1 list --json | node -e "
+            const list = JSON.parse(require('fs').readFileSync(0, 'utf-8'));
+            const found = list.find(d => d.name === process.env.D1_NAME);
+            console.log(found ? found.uuid : '');
+          ")
+          if [ -n "$EXISTING" ]; then
+            echo "Found existing D1 database: $EXISTING"
+            echo "id=$EXISTING" >> "$GITHUB_OUTPUT"
+          else
+            OUTPUT=$(npx wrangler d1 create "$D1_NAME")
+            echo "$OUTPUT"
+            ID=$(echo "$OUTPUT" | grep -oE 'database_id = "[^"]+"' | cut -d'"' -f2)
+            echo "id=$ID" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or find R2 bucket
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(npx wrangler r2 bucket list --json | node -e "
+            const list = JSON.parse(require('fs').readFileSync(0, 'utf-8'));
+            console.log(list.some(b => b.name === process.env.R2_NAME) ? 'yes' : '');
+          ")
+          if [ -z "$EXISTING" ]; then
+            npx wrangler r2 bucket create "$R2_NAME"
+          else
+            echo "R2 bucket $R2_NAME already exists."
+          fi
+
+      - name: Create or find KV namespace
+        id: kv
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(npx wrangler kv namespace list --json | node -e "
+            const list = JSON.parse(require('fs').readFileSync(0, 'utf-8'));
+            const found = list.find(n => n.title.endsWith(process.env.KV_TITLE));
+            console.log(found ? found.id : '');
+          ")
+          if [ -n "$EXISTING" ]; then
+            echo "Found existing KV namespace: $EXISTING"
+            echo "id=$EXISTING" >> "$GITHUB_OUTPUT"
+          else
+            OUTPUT=$(npx wrangler kv namespace create "$KV_TITLE")
+            echo "$OUTPUT"
+            ID=$(echo "$OUTPUT" | grep -oE 'id = "[^"]+"' | head -1 | cut -d'"' -f2)
+            echo "id=$ID" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write bindings into wrangler.toml
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('fs');
+            let toml = fs.readFileSync('wrangler.toml', 'utf-8');
+            const marker = '# Once provisioned, this file will contain:';
+            const idx = toml.indexOf(marker);
+            if (idx !== -1) toml = toml.slice(0, idx).trimEnd() + '\n';
+            toml += \`
+[[d1_databases]]
+binding = \"DB\"
+database_name = \"${D1_NAME}\"
+database_id = \"${{ steps.d1.outputs.id }}\"
+migrations_dir = \"d1/migrations\"
+
+[[r2_buckets]]
+binding = \"REPORTS\"
+bucket_name = \"${R2_NAME}\"
+
+[[kv_namespaces]]
+binding = \"RATE_LIMIT\"
+id = \"${{ steps.kv.outputs.id }}\"
+\`;
+            fs.writeFileSync('wrangler.toml', toml);
+          "
+          cat wrangler.toml
+
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply "$D1_NAME" --remote
+
+      - name: Commit wrangler.toml
+        run: |
+          git config user.name "ai-check-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add wrangler.toml
+          git diff --cached --quiet || git commit -m "chore: wire Cloudflare D1/R2/KV bindings"
+          git push
+
+      - name: Trigger deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Pushes made with the default GITHUB_TOKEN don't cascade into
+        # other workflow runs (GitHub's loop-prevention) — the commit
+        # above alone would NOT trigger deploy.yml, so this explicitly
+        # runs it.
+        run: gh workflow run deploy.yml --ref "${{ github.ref_name }}"
+
+      - name: Remind about secrets
+        run: |
+          echo "Infrastructure provisioned and a deploy has been triggered."
+          echo "Remaining manual step (do this once, from your own machine):"
+          echo "  wrangler secret put ENCRYPTION_KEY"
+          echo "  wrangler secret put RESEND_API_KEY   (optional — magic links log to console without it)"
+          echo "See docs/DEPLOYMENT.md."
