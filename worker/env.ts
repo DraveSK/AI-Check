@@ -16,8 +16,9 @@ export interface Env {
   ENCRYPTION_KEY?: string;
 
   /** Optional — if unset, magic links are logged instead of emailed (dev
-   * mode). See worker/lib/email.ts. */
-  RESEND_API_KEY?: string;
+   * mode). See worker/lib/email.ts. Brevo free tier: 300 emails/day. */
+  BREVO_API_KEY?: string;
+  /** `"Name <email@domain>"`, e.g. "AI Check <login@check.drave.sk>". */
   EMAIL_FROM?: string;
 
   /** Public origin used to build magic-link URLs, e.g. https://check.drave.sk */

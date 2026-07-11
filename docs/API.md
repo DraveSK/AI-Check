@@ -55,7 +55,7 @@ hijack a session.
 Body: `{ "email": "you@example.com" }`. Always returns
 `200 { "data": { "sent": true } }` regardless of whether the address is
 registered — no user enumeration. Rate limited (5 / 15 min / IP). Links
-expire in 15 minutes and are single-use. Without `RESEND_API_KEY`
+expire in 15 minutes and are single-use. Without `BREVO_API_KEY`
 configured, the link is logged to the Worker console instead of emailed
 (dev mode — see [`worker/lib/email.ts`](../worker/lib/email.ts)).
 

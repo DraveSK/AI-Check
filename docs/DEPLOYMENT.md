@@ -75,7 +75,8 @@ npx wrangler secret put ENCRYPTION_KEY
 
 # Optional. Without it, magic-link sign-in emails are logged to the
 # Worker's console instead of sent — fine for testing, not for real users.
-npx wrangler secret put RESEND_API_KEY
+# Brevo free tier covers 300 emails/day: https://app.brevo.com/settings/keys/api
+npx wrangler secret put BREVO_API_KEY
 npx wrangler secret put EMAIL_FROM      # e.g. "AI Check <login@check.drave.sk>"
 
 # Optional — defaults to the request's own origin if unset.
