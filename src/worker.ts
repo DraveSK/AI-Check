@@ -24,6 +24,20 @@ export default {
       return json({ data: { id: crypto.randomUUID(), accepted: true } }, 201);
     }
 
-    return env.ASSETS.fetch(request);
+    // Route every request through the asset binding. This prevents the SPA
+    // fallback from ever returning index.html in place of a CSS or JS asset.
+    const asset = await env.ASSETS.fetch(request);
+    const headers = new Headers(asset.headers);
+    headers.set(
+      'Cache-Control',
+      url.pathname === '/' || url.pathname.endsWith('.html')
+        ? 'no-cache'
+        : 'public, max-age=31536000, immutable',
+    );
+    return new Response(asset.body, {
+      status: asset.status,
+      statusText: asset.statusText,
+      headers,
+    });
   },
 };
