@@ -1,7 +1,7 @@
 import type { RouteContext } from '../router';
 import { apiError, ok } from '../lib/http';
 import { requireBindings } from '../lib/guard';
-import { requireUser } from '../lib/auth';
+import { requirePermission } from '../lib/rbac';
 import { safeParseJSON, apiKeyUpsertSchema } from '../lib/validation';
 import { listApiKeys, upsertApiKey, deleteApiKey, recordAudit } from '../lib/db';
 import { encryptSecret } from '../lib/crypto';
@@ -16,7 +16,7 @@ import { encryptSecret } from '../lib/crypto';
 export async function listProviders(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB');
   if (guard) return guard;
-  const user = await requireUser(ctx.request, ctx.env);
+  const user = await requirePermission(ctx.request, ctx.env, 'settings.read');
   if (user instanceof Response) return user;
 
   const keys = await listApiKeys(ctx.env.DB!, user.id);
@@ -26,7 +26,7 @@ export async function listProviders(ctx: RouteContext): Promise<Response> {
 export async function upsertProvider(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB', 'ENCRYPTION_KEY');
   if (guard) return guard;
-  const user = await requireUser(ctx.request, ctx.env);
+  const user = await requirePermission(ctx.request, ctx.env, 'settings.write');
   if (user instanceof Response) return user;
 
   const body = await ctx.request.json().catch(() => null);
@@ -52,7 +52,7 @@ export async function upsertProvider(ctx: RouteContext): Promise<Response> {
 export async function removeProvider(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB');
   if (guard) return guard;
-  const user = await requireUser(ctx.request, ctx.env);
+  const user = await requirePermission(ctx.request, ctx.env, 'settings.write');
   if (user instanceof Response) return user;
 
   await deleteApiKey(ctx.env.DB!, user.id, ctx.params.provider);

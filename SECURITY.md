@@ -110,6 +110,29 @@ threat-model section again at that time, not before.
   not the email is registered — no user enumeration — and is rate
   limited (5 requests / 15 min / IP).
 - Logout deletes the session server-side, not just the cookie.
+- Sign-in is blocked (not just limited) for accounts an admin has
+  disabled — checked in `verifyMagicLink` before a session is ever
+  created. Existing sessions issued before the disable aren't
+  retroactively revoked — see [RBAC.md](docs/RBAC.md) §Non-goals for why
+  this is documented debt, not an oversight.
+
+## Authorization (RBAC, implemented)
+
+Every API route checks a specific **permission**, not just "is there a
+valid session" — see [docs/RBAC.md](docs/RBAC.md) for the full role/
+permission matrix, route map, and ownership rules. Highlights relevant to
+this document specifically:
+
+- Role changes require `system.write` (`super_admin` only) — a plain
+  `admin` cannot promote themselves or anyone else, closing the obvious
+  privilege-escalation path a looser "admin manages users" rule would
+  leave open.
+- `GET /api/v1/system` (binding/secret *status*) is `super_admin`-only and
+  never returns a secret's value — see §API key handling below for why
+  that boundary exists at all, not just for this one endpoint.
+- The frontend's nav filtering and 403 page (`src/components/Forbidden.tsx`)
+  are a UI convenience only — every permission check is re-verified
+  server-side regardless of what the client sends.
 
 ## API key handling (BYO AI keys, implemented)
 

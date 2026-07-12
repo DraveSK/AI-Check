@@ -162,6 +162,20 @@ Provider modes at a glance:
 | `local-report` | `npm run scan` output on this machine | No account, no network |
 | `cloud-api` | The hosted Worker API | Deployed backend + sign-in |
 
+### Roles
+
+One dashboard for everyone — the sidebar just shows more depending on
+your role. The **first person to ever sign in** on an instance becomes
+`super_admin` automatically; everyone after that is a plain `user` until
+promoted from the Users page. Full permission matrix and route map:
+[docs/RBAC.md](docs/RBAC.md).
+
+| Role | Sees |
+|---|---|
+| `user` | Their own Overview, Storage, History, Settings, etc. |
+| `admin` | + Users, Analytics, Audit Logs |
+| `super_admin` | + Platform (infrastructure status, links to the Cloudflare dashboard — secrets are never editable in-app, see [SECURITY.md](SECURITY.md)) |
+
 ## See what changed since your last scan
 
 Every `npm run scan` saves a snapshot to local history
@@ -200,6 +214,7 @@ comparison works automatically.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Layered design, module map, extensibility |
 | [SCHEMA.md](SCHEMA.md) | `InspectionReport` version/compatibility/deprecation/migration policy |
 | [docs/API.md](docs/API.md) | REST API reference — auth, reports, AI analysis, BYO keys, export |
+| [docs/RBAC.md](docs/RBAC.md) | Roles, permissions, ownership rules, route map — one dashboard, permission-aware nav |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Cloudflare setup: D1/R2/KV provisioning, secrets, CI/CD, rollback |
 | [docs/SCANNER_SPEC.md](docs/SCANNER_SPEC.md) | Per-platform scanner design (macOS/Windows/Linux) — design only, not yet implemented |
 | [docs/SCANNER_DESIGN.md](docs/SCANNER_DESIGN.md) | Collectors, signatures, rules, cleanup generation, AI explanation — kept intentionally simple |

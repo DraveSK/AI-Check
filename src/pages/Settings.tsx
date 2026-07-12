@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyRound, Trash2 } from 'lucide-react';
 import { Card, PageTitle, Pill } from '../components/ui';
+import { apiFetch } from '../lib/apiFetch';
 
 type AIProviderId = 'anthropic' | 'openai' | 'gemini' | 'openrouter' | 'azure-openai' | 'ollama';
 
@@ -24,13 +25,6 @@ const PROVIDER_MODEL_HINT: Partial<Record<AIProviderId, string>> = {
 interface StoredProvider {
   provider: AIProviderId;
   addedAt: string;
-}
-
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { ...init, credentials: 'include', headers: { 'Content-Type': 'application/json', ...init?.headers } });
-  const body = (await res.json().catch(() => null)) as { data?: T; error?: { message: string } } | null;
-  if (!res.ok || !body || body.error) throw new Error(body?.error?.message ?? `Request failed (${res.status}).`);
-  return body.data as T;
 }
 
 /**

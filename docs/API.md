@@ -34,7 +34,12 @@ trusted as-is.
 - Internal models are never exposed: every route returns an explicit
   field whitelist (`pick()` in `worker/lib/http.ts`), not raw DB rows.
 
-## Authentication
+## Authentication & authorization
+
+Every 🔒 route below also enforces a specific **permission**, not just "is
+this a valid session" — see [RBAC.md](RBAC.md) for the full role/
+permission matrix and route map. This section covers session mechanics
+only.
 
 Magic-link only — no passwords exist anywhere in the system.
 
@@ -68,7 +73,9 @@ Browser: consumes the token, sets the session cookie, 302-redirects to
 ### `POST /api/v1/auth/logout` · `GET /api/v1/auth/me`
 
 Logout deletes the session and clears the cookie. `me` returns
-`{ id, email, created_at }` or `401`.
+`{ id, email, display_name, avatar, role, status, created_at, last_login,
+permissions[] }` or `401`. `permissions` is derived server-side from
+`role` (see [RBAC.md](RBAC.md)) — the frontend never computes it itself.
 
 ## Devices
 
@@ -77,6 +84,20 @@ Logout deletes the session and clears the cookie. `me` returns
 Devices the user has uploaded reports from. Devices are created
 implicitly by report upload (unique per user + name + platform) — there
 is no separate registration step to get wrong.
+
+## Users, Analytics, Audit Logs, System (admin+)
+
+See [RBAC.md](RBAC.md) for the full route map with required permissions.
+Summary:
+
+- `GET /api/v1/users?search=` · `GET /api/v1/users/:id` — `users.read`
+- `PUT /api/v1/users/:id/role` — `system.write` (super_admin only)
+- `PUT /api/v1/users/:id/status` — `users.write`, body
+  `{ "status": "active" | "disabled" }`
+- `GET /api/v1/analytics` — `analytics.read`, platform-wide counts only
+- `GET /api/v1/audit-logs` — `analytics.read`
+- `GET /api/v1/system` — `system.read` (super_admin only), reports whether
+  each Cloudflare binding/secret is *configured* — never a value
 
 ## Reports
 
@@ -93,10 +114,12 @@ immutable); a queryable summary row goes to D1. Rate limited
 
 ### `GET /api/v1/report/:id` 🔒
 
-The full stored `InspectionReport`. Scoped to the signed-in user — you
-can never fetch another user's report, enforced in the D1 query itself.
+The full stored `InspectionReport`. Scoped to the signed-in user by
+default — an `admin`/`super_admin` can pass `?userId=<id>` to view another
+user's report; a plain `user` passing it is silently ignored (see
+[RBAC.md](RBAC.md) §Ownership rules).
 
-### `GET /api/v1/report/history?deviceId=` 🔒
+### `GET /api/v1/report/history?deviceId=&userId=` 🔒
 
 Lightweight summaries (id, device, bytes, timestamps), never full
 reports — the same index-vs-payload split as the local scanner's history

@@ -2,7 +2,7 @@ import type { RouteContext } from '../router';
 import type { InspectionReport } from '../../src/types';
 import { apiError } from '../lib/http';
 import { requireBindings } from '../lib/guard';
-import { requireUser } from '../lib/auth';
+import { requirePermission } from '../lib/rbac';
 import { safeParseJSON, exportQuerySchema } from '../lib/validation';
 import { getReport } from '../lib/db';
 import { getReportJSON } from '../lib/r2';
@@ -22,7 +22,7 @@ const EXTENSION = { json: 'json', markdown: 'md', html: 'html' } as const;
 export async function exportReportRoute(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB', 'REPORTS');
   if (guard) return guard;
-  const user = await requireUser(ctx.request, ctx.env);
+  const user = await requirePermission(ctx.request, ctx.env, 'reports.read');
   if (user instanceof Response) return user;
 
   const url = new URL(ctx.request.url);

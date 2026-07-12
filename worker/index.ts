@@ -9,6 +9,10 @@ import { analyzeReport } from './routes/analyze';
 import { getUserSettings, updateUserSettings } from './routes/settings';
 import { listProviders, upsertProvider, removeProvider } from './routes/providers';
 import { exportReportRoute } from './routes/export';
+import { listUsersRoute, getUserRoute, updateUserRoleRoute, updateUserStatusRoute } from './routes/users';
+import { getAnalytics } from './routes/analytics';
+import { getAuditLogs } from './routes/audit';
+import { getSystemStatus } from './routes/system';
 
 export type { Env };
 
@@ -36,6 +40,15 @@ router.post('/api/v1/providers', upsertProvider);
 router.delete('/api/v1/providers/:provider', removeProvider);
 
 router.get('/api/v1/export', exportReportRoute);
+
+router.get('/api/v1/users', listUsersRoute);
+router.get('/api/v1/users/:id', getUserRoute);
+router.put('/api/v1/users/:id/role', updateUserRoleRoute);
+router.put('/api/v1/users/:id/status', updateUserStatusRoute);
+
+router.get('/api/v1/analytics', getAnalytics);
+router.get('/api/v1/audit-logs', getAuditLogs);
+router.get('/api/v1/system', getSystemStatus);
 
 async function handleApi(request: Request, env: Env, requestId: string): Promise<Response> {
   const url = new URL(request.url);

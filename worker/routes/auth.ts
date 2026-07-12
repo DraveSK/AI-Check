@@ -3,10 +3,11 @@ import { apiError, ok } from '../lib/http';
 import { requireBindings } from '../lib/guard';
 import { safeParseJSON, magicLinkRequestSchema, magicLinkVerifySchema } from '../lib/validation';
 import { randomToken, sha256Hex } from '../lib/crypto';
-import { createMagicLink, consumeMagicLink, findOrCreateUser, createSession, deleteSession, recordAudit } from '../lib/db';
+import { createMagicLink, consumeMagicLink, findOrCreateUser, createSession, deleteSession, recordAudit, updateLastLogin } from '../lib/db';
 import { sessionCookie, sessionExpiry, clearSessionCookie, currentUser } from '../lib/auth';
 import { sendMagicLinkEmail } from '../lib/email';
 import { checkRateLimit, RATE_LIMITS, clientIp } from '../lib/ratelimit';
+import { permissionsForRole, type Role } from '../lib/rbac';
 import { log } from '../lib/log';
 import { pick } from '../lib/http';
 
@@ -61,10 +62,16 @@ export async function verifyMagicLink(ctx: RouteContext): Promise<Response> {
   if (!consumed) return apiError('unauthorized', 'This sign-in link is invalid, expired, or already used.');
 
   const user = await findOrCreateUser(ctx.env.DB!, consumed.email);
+  if (user.status === 'disabled') {
+    await recordAudit(ctx.env.DB!, user.id, 'auth.sign_in_blocked', { reason: 'disabled' });
+    return apiError('forbidden', 'This account has been disabled.');
+  }
+
   const sessionToken = randomToken();
   const sessionHash = await sha256Hex(sessionToken);
   const expiresAt = sessionExpiry();
   await createSession(ctx.env.DB!, sessionHash, user.id, expiresAt);
+  await updateLastLogin(ctx.env.DB!, user.id);
   await recordAudit(ctx.env.DB!, user.id, 'auth.sign_in');
 
   // Two callers hit this same endpoint: a browser following the emailed
@@ -89,7 +96,11 @@ export async function logout(ctx: RouteContext): Promise<Response> {
 
   const header = ctx.request.headers.get('Cookie') ?? '';
   const match = /ai_check_session=([^;]+)/.exec(header);
-  if (match) await deleteSession(ctx.env.DB!, await sha256Hex(match[1]));
+  if (match) {
+    const user = await currentUser(ctx.request, ctx.env);
+    await deleteSession(ctx.env.DB!, await sha256Hex(match[1]));
+    if (user) await recordAudit(ctx.env.DB!, user.id, 'auth.sign_out');
+  }
 
   return new Response(JSON.stringify({ data: { signedOut: true } }), {
     status: 200,
@@ -97,9 +108,15 @@ export async function logout(ctx: RouteContext): Promise<Response> {
   });
 }
 
-/** GET /api/v1/auth/me — the currently signed-in user, or 401. */
+/** GET /api/v1/auth/me — the currently signed-in user, or 401. Includes
+ * `permissions` (derived from `role`, see worker/lib/rbac.ts) so the
+ * frontend never has to duplicate the role→permission mapping to decide
+ * what to show — it just checks `permissions.includes('users.read')`. */
 export async function me(ctx: RouteContext): Promise<Response> {
   const user = await currentUser(ctx.request, ctx.env);
   if (!user) return apiError('unauthorized', 'Not signed in.');
-  return ok(pick(user, ['id', 'email', 'created_at']));
+  return ok({
+    ...pick(user, ['id', 'email', 'display_name', 'avatar', 'role', 'status', 'created_at', 'last_login']),
+    permissions: permissionsForRole(user.role as Role),
+  });
 }

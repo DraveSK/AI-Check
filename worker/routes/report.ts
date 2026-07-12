@@ -2,7 +2,7 @@ import type { RouteContext } from '../router';
 import type { InspectionReport } from '../../src/types';
 import { apiError, ok, pick } from '../lib/http';
 import { requireBindings } from '../lib/guard';
-import { requireUser } from '../lib/auth';
+import { requirePermission } from '../lib/rbac';
 import { safeParseJSON, inspectionReportSchema, compareQuerySchema } from '../lib/validation';
 import { upsertDevice, insertReport, getReport, listReports, recordAudit, type ReportRow } from '../lib/db';
 import { putReport, getReportJSON } from '../lib/r2';
@@ -11,6 +11,17 @@ import { compareReports } from '../../src/utils/compareReports';
 import { log } from '../lib/log';
 
 const REPORT_LIST_FIELDS = ['id', 'device_id', 'schema_version', 'scanner_version', 'used_bytes', 'total_bytes', 'reclaimable_bytes', 'collected_at', 'created_at'] as const;
+
+/** `?userId=` lets an admin/super_admin look at another user's reports —
+ * see docs/RBAC.md §Ownership rules. A plain `user` passing this
+ * parameter is silently ignored (falls back to their own id), never an
+ * error — the parameter simply has no effect without the permission. */
+function resolveTargetUserId(request: Request, requester: { id: string; role: string }): { userId: string; asAdmin: boolean } {
+  const requested = new URL(request.url).searchParams.get('userId');
+  const isAdmin = requester.role === 'admin' || requester.role === 'super_admin';
+  if (requested && isAdmin) return { userId: requested, asAdmin: true };
+  return { userId: requester.id, asAdmin: false };
+}
 
 /**
  * POST /api/v1/report — the scanner's upload endpoint (see
@@ -22,7 +33,7 @@ const REPORT_LIST_FIELDS = ['id', 'device_id', 'schema_version', 'scanner_versio
 export async function uploadReport(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB', 'REPORTS');
   if (guard) return guard;
-  const user = await requireUser(ctx.request, ctx.env);
+  const user = await requirePermission(ctx.request, ctx.env, 'reports.write');
   if (user instanceof Response) return user;
 
   const allowed = await checkRateLimit(ctx.env, RATE_LIMITS.upload, user.id);
@@ -63,31 +74,34 @@ export async function uploadReport(ctx: RouteContext): Promise<Response> {
   return ok({ id: reportId, deviceId: device.id, accepted: true }, 201);
 }
 
-/** GET /api/v1/report/:id — a single full report. */
+/** GET /api/v1/report/:id — a single full report. Admins may pass
+ * `?userId=` to view another user's report (see resolveTargetUserId). */
 export async function getReportById(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB', 'REPORTS');
   if (guard) return guard;
-  const user = await requireUser(ctx.request, ctx.env);
+  const user = await requirePermission(ctx.request, ctx.env, 'reports.read');
   if (user instanceof Response) return user;
 
-  const row = await getReport(ctx.env.DB!, user.id, ctx.params.id);
+  const { asAdmin } = resolveTargetUserId(ctx.request, user);
+  const row = await getReport(ctx.env.DB!, user.id, ctx.params.id, asAdmin);
   if (!row) return apiError('not_found', 'Report not found.');
   const report = await getReportJSON<InspectionReport>(ctx.env.REPORTS!, row.r2_key);
   if (!report) return apiError('not_found', 'Report metadata exists but the stored file is missing.');
   return ok(report);
 }
 
-/** GET /api/v1/report/history?deviceId= — lightweight summaries, never
- * full reports, matching the pattern already established for the local
- * scanner's history index (see docs/HISTORY_FORMAT.md). */
+/** GET /api/v1/report/history?deviceId=&userId= — lightweight summaries,
+ * never full reports, matching the pattern already established for the
+ * local scanner's history index (see docs/HISTORY_FORMAT.md). */
 export async function reportHistory(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB');
   if (guard) return guard;
-  const user = await requireUser(ctx.request, ctx.env);
+  const user = await requirePermission(ctx.request, ctx.env, 'reports.read');
   if (user instanceof Response) return user;
 
+  const { userId, asAdmin } = resolveTargetUserId(ctx.request, user);
   const deviceId = new URL(ctx.request.url).searchParams.get('deviceId') ?? undefined;
-  const rows = await listReports(ctx.env.DB!, user.id, deviceId);
+  const rows = await listReports(ctx.env.DB!, userId, deviceId, 100, asAdmin);
   return ok(rows.map((r) => pick(r, REPORT_LIST_FIELDS)));
 }
 
@@ -98,16 +112,17 @@ export async function reportHistory(ctx: RouteContext): Promise<Response> {
 export async function compareReportsRoute(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB', 'REPORTS');
   if (guard) return guard;
-  const user = await requireUser(ctx.request, ctx.env);
+  const user = await requirePermission(ctx.request, ctx.env, 'reports.read');
   if (user instanceof Response) return user;
 
   const url = new URL(ctx.request.url);
   const parsed = safeParseJSON(compareQuerySchema, { previousId: url.searchParams.get('previousId'), currentId: url.searchParams.get('currentId') });
   if (!parsed.success) return apiError('invalid_request', 'previousId and currentId are required.', parsed.errors);
 
+  const { asAdmin } = resolveTargetUserId(ctx.request, user);
   const [previousRow, currentRow] = await Promise.all([
-    getReport(ctx.env.DB!, user.id, parsed.data.previousId),
-    getReport(ctx.env.DB!, user.id, parsed.data.currentId),
+    getReport(ctx.env.DB!, user.id, parsed.data.previousId, asAdmin),
+    getReport(ctx.env.DB!, user.id, parsed.data.currentId, asAdmin),
   ]);
   if (!previousRow || !currentRow) return apiError('not_found', 'One or both reports were not found.');
 

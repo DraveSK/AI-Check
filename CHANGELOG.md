@@ -3,7 +3,53 @@
 All notable changes to this project are documented in this file. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased] — v0.5 Production SaaS Backend
+## [Unreleased] — v0.6 Role-Based Access Control
+
+### Added
+
+- **RBAC** (`worker/lib/rbac.ts`): four roles (`guest`/`user`/`admin`/
+  `super_admin`), thirteen permissions, one role→permission map every
+  route and page checks — see `docs/RBAC.md` for the full matrix and
+  route map.
+- `d1/migrations/0002_rbac.sql`: additive `role`, `status`, `display_name`,
+  `avatar`, `updated_at`, `last_login` columns on `users`. First-ever
+  account on an instance auto-bootstraps as `super_admin`.
+- Admin+ endpoints: `GET /api/v1/users`, `GET /api/v1/users/:id`,
+  `PUT /api/v1/users/:id/role` (super_admin only), `PUT
+  /api/v1/users/:id/status`, `GET /api/v1/analytics`, `GET
+  /api/v1/audit-logs`, `GET /api/v1/system` (super_admin only, binding/
+  secret presence never values).
+- Admin override on report endpoints via `?userId=` — an `admin`/
+  `super_admin` can view another user's reports/history/comparisons;
+  ignored (falls back to "own") for a plain `user`.
+- New pages, additive to the existing sidebar (same one dashboard, no
+  second app — see `docs/RBAC.md` §Navigation): Users, Analytics, Audit
+  Logs, and (super_admin only) Platform — the last one consolidates what
+  would've been eight near-empty nav items into one status page with
+  links to the Cloudflare dashboard, since none of that should be
+  editable in-app anyway.
+- `src/components/Forbidden.tsx` — a 403 view, not a redirect, for a page
+  a signed-in user's role doesn't unlock.
+- Audit log coverage: `auth.sign_in`/`sign_in_blocked`/`sign_out`,
+  `user.role_changed`, `user.status_changed`, `settings.updated`.
+
+### Changed
+
+- `GET /api/v1/auth/me` now returns `role`, `status`, `display_name`,
+  `avatar`, `last_login`, and `permissions[]` alongside the existing
+  fields.
+- De-duplicated the `apiFetch` helper (was copy-pasted into
+  `src/pages/Settings.tsx`) into `src/lib/apiFetch.ts`, shared by the
+  cloud-api provider and every new admin page.
+
+### Notes
+
+- No immediate session revocation on disable/role change — documented as
+  known technical debt in `docs/RBAC.md`, not silently skipped.
+- No per-report sharing/ACL — ownership stays a single `user_id` column;
+  see `docs/RBAC.md` §Non-goals for why.
+
+## v0.5 Production SaaS Backend
 
 ### Added
 

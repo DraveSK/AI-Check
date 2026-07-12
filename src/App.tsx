@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, ChevronRight, Laptop, Moon, Search, Settings, Sun } from 'lucide-react';
 import { ProviderRoot, useProviders } from './providers';
 import { useProviderData } from './hooks/useProviderData';
-import { nav, type Page } from './config/navigation';
+import { navForPermissions, PAGE_PERMISSION, type Page } from './config/navigation';
 import { Overview } from './pages/Overview';
 import { StoragePage } from './pages/Storage';
 import { SecurityPage } from './pages/Security';
@@ -13,36 +13,60 @@ import { Report } from './pages/Report';
 import { HistoryPage } from './pages/History';
 import { Generic } from './pages/Generic';
 import { SettingsPage } from './pages/Settings';
+import { UsersPage } from './pages/Users';
+import { AnalyticsPage } from './pages/Analytics';
+import { AuditLogsPage } from './pages/AuditLogs';
+import { PlatformPage } from './pages/Platform';
+import { Forbidden } from './components/Forbidden';
 import { Login } from './pages/Login';
-import { useCloudAuth } from './hooks/useCloudAuth';
+import { useCloudAuth, type CloudUser } from './hooks/useCloudAuth';
 
-function Dashboard() {
+function Dashboard({ user }: { user: CloudUser | null }) {
   const [page, setPage] = useState<Page>('Overview');
   const [dark, setDark] = useState(true);
   const providers = useProviders();
   const device = useProviderData(() => providers.device.getActiveDevice());
   const security = useProviderData(() => providers.security.getSecuritySnapshot('active'));
 
-  const content =
-    page === 'Overview' ? (
-      <Overview setPage={setPage} />
-    ) : page === 'Storage Analyzer' ? (
-      <StoragePage />
-    ) : page === 'Security Analyzer' ? (
-      <SecurityPage />
-    ) : page === 'Developer Environment' ? (
-      <Developer />
-    ) : page === 'Crypto Wallet Detector' ? (
-      <Crypto />
-    ) : page === 'AI Report' ? (
-      <Report setPage={setPage} />
-    ) : page === 'History' ? (
-      <HistoryPage />
-    ) : page === 'Settings' ? (
-      <SettingsPage />
-    ) : (
-      <Generic page={page} />
-    );
+  // null permissions (mock/local-report mode) = full access, same as
+  // always; in cloud-api mode, a page listed in PAGE_PERMISSION is
+  // gated — see docs/RBAC.md §Route guards. A 403 view, never a redirect.
+  const requiredPermission = PAGE_PERMISSION[page];
+  const forbidden = requiredPermission && user && !user.permissions.includes(requiredPermission);
+
+  const content = forbidden ? (
+    <Forbidden page={page} />
+  ) : page === 'Overview' ? (
+    <Overview setPage={setPage} />
+  ) : page === 'Storage Analyzer' ? (
+    <StoragePage />
+  ) : page === 'Security Analyzer' ? (
+    <SecurityPage />
+  ) : page === 'Developer Environment' ? (
+    <Developer />
+  ) : page === 'Crypto Wallet Detector' ? (
+    <Crypto />
+  ) : page === 'AI Report' ? (
+    <Report setPage={setPage} />
+  ) : page === 'History' ? (
+    <HistoryPage />
+  ) : page === 'Settings' ? (
+    <SettingsPage />
+  ) : page === 'Users' ? (
+    <UsersPage permissions={user?.permissions ?? []} />
+  ) : page === 'Analytics' ? (
+    <AnalyticsPage />
+  ) : page === 'Audit Logs' ? (
+    <AuditLogsPage />
+  ) : page === 'Platform' ? (
+    <PlatformPage />
+  ) : (
+    <Generic page={page} />
+  );
+
+  const nav = navForPermissions(user?.permissions ?? null);
+  const workspaceName = user?.display_name || user?.email || 'Drave Team';
+  const initials = (user?.email ?? 'DT').slice(0, 2).toUpperCase();
 
   return (
     <div className={dark ? 'app dark' : 'app'}>
@@ -52,10 +76,10 @@ function Dashboard() {
           <span>AI Check</span>
         </div>
         <div className="workspace">
-          <span className="avatar">DT</span>
+          <span className="avatar">{initials}</span>
           <div>
-            <b>Drave Team</b>
-            <small>Personal workspace</small>
+            <b>{workspaceName}</b>
+            <small>{user ? user.role.replace('_', ' ') : 'Personal workspace'}</small>
           </div>
           <ChevronDown size={15} />
         </div>
@@ -104,7 +128,7 @@ function Dashboard() {
               <Search size={17} /> Search <kbd>⌘ K</kbd>
             </button>
             <button className="bell">●</button>
-            <span className="avatar large">DT</span>
+            <span className="avatar large">{initials}</span>
           </div>
         </header>
         <AnimatePresence mode="wait">
@@ -128,10 +152,10 @@ function Gate() {
   const isCloudApi = import.meta.env.VITE_PROVIDER_MODE === 'cloud-api';
   const auth = useCloudAuth();
 
-  if (!isCloudApi) return <Dashboard />;
+  if (!isCloudApi) return <Dashboard user={null} />;
   if (auth.status === 'checking') return null;
   if (auth.status === 'signed-out') return <Login />;
-  return <Dashboard />;
+  return <Dashboard user={auth.user} />;
 }
 
 export default function App() {

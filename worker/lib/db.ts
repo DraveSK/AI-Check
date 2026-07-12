@@ -9,7 +9,13 @@ import type { Platform } from '../../src/types';
 export interface UserRow {
   id: string;
   email: string;
+  display_name: string | null;
+  avatar: string | null;
+  role: string; // 'user' | 'admin' | 'super_admin' — see worker/lib/rbac.ts
+  status: string; // 'active' | 'disabled'
   created_at: string;
+  updated_at: string;
+  last_login: string | null;
 }
 
 export interface DeviceRow {
@@ -52,12 +58,84 @@ export interface SettingsRow {
   updated_at: string;
 }
 
+/** The very first account ever created becomes `super_admin` — someone
+ * has to be able to promote everyone else, and for a solo founder
+ * standing up their own instance, "whoever signs in first" is the
+ * simplest possible bootstrap with no separate setup step. Every
+ * subsequent signup is a plain `user`. See docs/RBAC.md §Bootstrapping. */
 export async function findOrCreateUser(db: D1Database, email: string): Promise<UserRow> {
   const existing = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<UserRow>();
   if (existing) return existing;
+
+  const { count } = (await db.prepare('SELECT COUNT(*) as count FROM users').first<{ count: number }>()) ?? { count: 0 };
+  const role = count === 0 ? 'super_admin' : 'user';
+
   const id = crypto.randomUUID();
-  await db.prepare('INSERT INTO users (id, email) VALUES (?, ?)').bind(id, email).run();
-  return { id, email, created_at: new Date().toISOString() };
+  await db.prepare('INSERT INTO users (id, email, role) VALUES (?, ?, ?)').bind(id, email, role).run();
+  const created = await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>();
+  if (!created) throw new Error('Failed to create user.');
+  return created;
+}
+
+export async function updateLastLogin(db: D1Database, userId: string): Promise<void> {
+  await db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").bind(userId).run();
+}
+
+export async function listUsers(db: D1Database, search?: string, limit = 100): Promise<UserRow[]> {
+  const query = search
+    ? db.prepare('SELECT * FROM users WHERE email LIKE ? OR display_name LIKE ? ORDER BY created_at DESC LIMIT ?').bind(`%${search}%`, `%${search}%`, limit)
+    : db.prepare('SELECT * FROM users ORDER BY created_at DESC LIMIT ?').bind(limit);
+  const { results } = await query.all<UserRow>();
+  return results;
+}
+
+export async function getUserById(db: D1Database, userId: string): Promise<UserRow | null> {
+  const row = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first<UserRow>();
+  return row ?? null;
+}
+
+export async function updateUserRole(db: D1Database, userId: string, role: string): Promise<void> {
+  await db.prepare("UPDATE users SET role = ?, updated_at = datetime('now') WHERE id = ?").bind(role, userId).run();
+}
+
+export async function updateUserStatus(db: D1Database, userId: string, status: string): Promise<void> {
+  await db.prepare("UPDATE users SET status = ?, updated_at = datetime('now') WHERE id = ?").bind(status, userId).run();
+}
+
+export interface PlatformStats {
+  totalUsers: number;
+  activeUsersLast30Days: number;
+  totalReports: number;
+  reportsToday: number;
+  totalStorageBytes: number;
+  scannerVersions: { version: string; count: number }[];
+}
+
+export async function getPlatformStats(db: D1Database): Promise<PlatformStats> {
+  const [users, activeUsers, reports, reportsToday, storage, versions] = await Promise.all([
+    db.prepare('SELECT COUNT(*) as n FROM users').first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) as n FROM users WHERE last_login > datetime('now', '-30 days')").first<{ n: number }>(),
+    db.prepare('SELECT COUNT(*) as n FROM reports').first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) as n FROM reports WHERE created_at > datetime('now', '-1 day')").first<{ n: number }>(),
+    db.prepare('SELECT COALESCE(SUM(used_bytes), 0) as n FROM reports').first<{ n: number }>(),
+    db.prepare('SELECT scanner_version as version, COUNT(*) as count FROM reports GROUP BY scanner_version ORDER BY count DESC').all<{ version: string; count: number }>(),
+  ]);
+  return {
+    totalUsers: users?.n ?? 0,
+    activeUsersLast30Days: activeUsers?.n ?? 0,
+    totalReports: reports?.n ?? 0,
+    reportsToday: reportsToday?.n ?? 0,
+    totalStorageBytes: storage?.n ?? 0,
+    scannerVersions: versions.results,
+  };
+}
+
+export async function listAuditLogs(db: D1Database, limit = 100): Promise<{ id: string; user_id: string | null; action: string; metadata: string | null; created_at: string }[]> {
+  const { results } = await db
+    .prepare('SELECT id, user_id, action, metadata, created_at FROM audit_logs ORDER BY created_at DESC LIMIT ?')
+    .bind(limit)
+    .all<{ id: string; user_id: string | null; action: string; metadata: string | null; created_at: string }>();
+  return results;
 }
 
 export async function createMagicLink(db: D1Database, email: string, tokenHash: string, expiresAt: string): Promise<void> {
@@ -135,15 +213,27 @@ export async function insertReport(db: D1Database, row: ReportRow): Promise<void
     .run();
 }
 
-export async function getReport(db: D1Database, userId: string, reportId: string): Promise<ReportRow | null> {
-  const row = await db.prepare('SELECT * FROM reports WHERE id = ? AND user_id = ?').bind(reportId, userId).first<ReportRow>();
+/** `asAdmin: true` drops the ownership filter — callers must have already
+ * checked `canAccessOwnedResource` / an admin-level permission before
+ * passing it (see worker/lib/rbac.ts). Never derived from user input. */
+export async function getReport(db: D1Database, userId: string, reportId: string, asAdmin = false): Promise<ReportRow | null> {
+  const row = asAdmin
+    ? await db.prepare('SELECT * FROM reports WHERE id = ?').bind(reportId).first<ReportRow>()
+    : await db.prepare('SELECT * FROM reports WHERE id = ? AND user_id = ?').bind(reportId, userId).first<ReportRow>();
   return row ?? null;
 }
 
-export async function listReports(db: D1Database, userId: string, deviceId?: string, limit = 100): Promise<ReportRow[]> {
-  const query = deviceId
-    ? db.prepare('SELECT * FROM reports WHERE user_id = ? AND device_id = ? ORDER BY collected_at DESC LIMIT ?').bind(userId, deviceId, limit)
-    : db.prepare('SELECT * FROM reports WHERE user_id = ? ORDER BY collected_at DESC LIMIT ?').bind(userId, limit);
+export async function listReports(db: D1Database, userId: string, deviceId?: string, limit = 100, asAdmin = false): Promise<ReportRow[]> {
+  let query;
+  if (asAdmin) {
+    query = deviceId
+      ? db.prepare('SELECT * FROM reports WHERE device_id = ? ORDER BY collected_at DESC LIMIT ?').bind(deviceId, limit)
+      : db.prepare('SELECT * FROM reports ORDER BY collected_at DESC LIMIT ?').bind(limit);
+  } else {
+    query = deviceId
+      ? db.prepare('SELECT * FROM reports WHERE user_id = ? AND device_id = ? ORDER BY collected_at DESC LIMIT ?').bind(userId, deviceId, limit)
+      : db.prepare('SELECT * FROM reports WHERE user_id = ? ORDER BY collected_at DESC LIMIT ?').bind(userId, limit);
+  }
   const { results } = await query.all<ReportRow>();
   return results;
 }

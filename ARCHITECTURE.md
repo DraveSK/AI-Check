@@ -92,7 +92,8 @@ This buys three things:
 | Utilities | `src/utils`, `src/hooks` | Pure helpers (compare, export formatting), no domain logic |
 | Config | `src/config` | Navigation, environment-driven switches |
 | API | `worker/index.ts`, `worker/routes`, `worker/lib` | Cloudflare Worker today; contract in `docs/API.md` is host-agnostic |
-| Database | `d1/migrations` | D1 (SQLite): users, sessions, devices, report summaries, encrypted BYO keys, audit log |
+| Authorization | `worker/lib/rbac.ts` | One role→permission map every route and page checks — see `docs/RBAC.md` |
+| Database | `d1/migrations` | D1 (SQLite): users (with role/status), sessions, devices, report summaries, encrypted BYO keys, audit log |
 | Object storage | R2 via `worker/lib/r2.ts` | Immutable `InspectionReport` JSON + AI analysis companions |
 | AI Layer | `worker/lib/ai` | One `AIProvider` interface, per-vendor files — swap vendors without touching the pipeline |
 | Scanner | `scanner/` (macOS Storage implemented; Windows/Linux per `docs/SCANNER_SPEC.md`) | Local CLI producing one `InspectionReport`; collectors, signatures, rules as plain functions |

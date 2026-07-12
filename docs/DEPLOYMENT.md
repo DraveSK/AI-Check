@@ -5,6 +5,12 @@ dashboard as static assets and handles `/api/v1/*` in the same process
 (see [ARCHITECTURE.md](../ARCHITECTURE.md)). This document is the
 complete, from-zero path to a live deployment.
 
+**Already deployed and adding a new migration file?** Run
+`npm run db:migrate:remote` (or re-run the "Provision Cloudflare
+Infrastructure" GitHub Action, which applies any un-applied file in
+`d1/migrations/` — see below) — `wrangler d1 migrations apply` only runs
+migrations it hasn't seen before, so this is always safe to re-run.
+
 ## Prerequisites
 
 - A Cloudflare account with Workers enabled

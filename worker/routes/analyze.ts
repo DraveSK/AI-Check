@@ -2,7 +2,7 @@ import type { RouteContext } from '../router';
 import type { InspectionReport } from '../../src/types';
 import { apiError, ok } from '../lib/http';
 import { requireBindings } from '../lib/guard';
-import { requireUser } from '../lib/auth';
+import { requirePermission } from '../lib/rbac';
 import { safeParseJSON, analyzeRequestSchema } from '../lib/validation';
 import { getReport, getApiKey, recordAudit } from '../lib/db';
 import { getReportJSON, putAnalysis } from '../lib/r2';
@@ -22,7 +22,7 @@ import { log } from '../lib/log';
 export async function analyzeReport(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB', 'REPORTS');
   if (guard) return guard;
-  const user = await requireUser(ctx.request, ctx.env);
+  const user = await requirePermission(ctx.request, ctx.env, 'reports.read');
   if (user instanceof Response) return user;
 
   const allowed = await checkRateLimit(ctx.env, RATE_LIMITS.analyze, user.id);
