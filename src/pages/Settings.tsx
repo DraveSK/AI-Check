@@ -89,8 +89,8 @@ export function SettingsPage() {
         <PageTitle title="Settings" copy="Configure how AI Check inspects and protects your devices." />
         <Card>
           <p className="changes-empty">
-            AI provider keys are managed on a hosted instance. Set <code>VITE_PROVIDER_MODE=cloud-api</code> and sign in to
-            configure one — see docs/DEPLOYMENT.md.
+            You're viewing a local scan, not a signed-in account, so there's nowhere to save an AI provider key yet.
+            Sign in to a hosted AI Check instance to add one.
           </p>
         </Card>
       </>
