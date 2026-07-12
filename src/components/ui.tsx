@@ -5,8 +5,16 @@ export function Pill({ children, tone = 'neutral' }: { children: ReactNode; tone
   return <span className={'pill ' + tone}>{children}</span>;
 }
 
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <section className={'card ' + className}>{children}</section>;
+export function Card({
+  children,
+  className = '',
+  ...rest
+}: { children: ReactNode; className?: string } & React.HTMLAttributes<HTMLElement>) {
+  return (
+    <section className={'card ' + className} {...rest}>
+      {children}
+    </section>
+  );
 }
 
 export function PageTitle({

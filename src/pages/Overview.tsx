@@ -42,7 +42,7 @@ export function Overview({ setPage }: { setPage: (p: Page) => void }) {
       />
 
       <div className="metrics">
-        <Card className="score">
+        <Card className="score" onClick={() => setPage('Health Score')} role="button" tabIndex={0}>
           <div className="metric-top">
             <span>Health score</span>
             <Activity size={18} />
@@ -109,7 +109,7 @@ export function Overview({ setPage }: { setPage: (p: Page) => void }) {
           </ProviderGate>
         </Card>
 
-        <Card>
+        <Card onClick={() => setPage('Security Analyzer')} role="button" tabIndex={0}>
           <div className="metric-top">
             <span>Security</span>
             <ShieldCheck size={18} />
