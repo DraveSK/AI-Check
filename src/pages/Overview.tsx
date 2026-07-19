@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Activity, Archive, ArrowUpRight, Bot, CircleAlert, Clock3, HardDrive, Play, ShieldCheck, Sparkles, TrendingDown, TrendingUp, Zap } from 'lucide-react';
 import { Card, Meter, Pill, PageTitle } from '../components/ui';
 import { ProviderGate } from '../components/ProviderGate';
+import { ScanModal } from '../components/ScanModal';
 import { useProviders } from '../providers';
 import { useProviderData } from '../hooks/useProviderData';
 import { formatBytes, splitBytes } from '../utils/format';
@@ -8,6 +10,7 @@ import { timeSince } from '../utils/compareReports';
 import type { Page } from '../config/navigation';
 
 export function Overview({ setPage }: { setPage: (p: Page) => void }) {
+  const [scanOpen, setScanOpen] = useState(false);
   const providers = useProviders();
   const device = useProviderData(() => providers.device.getActiveDevice());
   const health = useProviderData(() => providers.health.getHealthSnapshot('active'));
@@ -35,11 +38,12 @@ export function Overview({ setPage }: { setPage: (p: Page) => void }) {
             : `Run an inspection to see ${deviceName}'s health.`
         }
         action={
-          <button className="button primary">
+          <button className="button primary" onClick={() => setScanOpen(true)}>
             <Play size={15} /> Run inspection
           </button>
         }
       />
+      {scanOpen && <ScanModal onClose={() => setScanOpen(false)} onComplete={() => window.location.reload()} />}
 
       <div className="metrics">
         <Card className="score" onClick={() => setPage('Health Score')} role="button" tabIndex={0}>

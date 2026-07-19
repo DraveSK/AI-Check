@@ -101,9 +101,21 @@ Summary:
 
 ## Reports
 
+### `POST /api/v1/scan-token` 🔒
+
+Mints a one-time scan token for the dashboard's "Run inspection" flow
+(`reports.write` required). The token is embedded in the downloadable
+`AI-Check-Scan.command` file instead of a real session credential — it
+expires after 15 minutes, is burned on first upload, and only its
+SHA-256 hash is stored (`scan_tokens` table). Rate limited with the
+upload bucket. Returns `201 { "data": { "token", "expiresAt" } }`.
+
 ### `POST /api/v1/report` 🔒
 
-The scanner's upload endpoint (`npm run scan -- --upload`). Body is one
+The scanner's upload endpoint. Authenticate with either a session
+(cookie or `Authorization: Bearer`, the `npm run scan -- --upload`
+path) or a one-time `X-Scan-Token` header (the browser's "Run
+inspection" download). Body is one
 `InspectionReport` (see [`src/types/index.ts`](../src/types/index.ts)),
 validated in full before anything persists — an invalid report is
 rejected with `400 invalid_report` + per-field details, never partially

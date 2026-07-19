@@ -155,6 +155,33 @@ export async function consumeMagicLink(db: D1Database, tokenHash: string): Promi
   return { email: row.email };
 }
 
+export async function createScanToken(db: D1Database, tokenHash: string, userId: string, expiresAt: string): Promise<void> {
+  await db
+    .prepare('INSERT INTO scan_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+    .bind(tokenHash, userId, expiresAt)
+    .run();
+}
+
+/** Single use: resolving the token also burns it, exactly like
+ * consumeMagicLink. Returns the owning user or null for an unknown,
+ * expired, or already-used token. */
+export async function consumeScanToken(db: D1Database, tokenHash: string): Promise<UserRow | null> {
+  const row = await db
+    .prepare(
+      `SELECT users.*, scan_tokens.expires_at AS token_expires_at, scan_tokens.used_at AS token_used_at
+       FROM scan_tokens JOIN users ON users.id = scan_tokens.user_id
+       WHERE scan_tokens.token_hash = ?`,
+    )
+    .bind(tokenHash)
+    .first<UserRow & { token_expires_at: string; token_used_at: string | null }>();
+  if (!row || row.token_used_at || new Date(row.token_expires_at) < new Date()) return null;
+  await db.prepare('UPDATE scan_tokens SET used_at = datetime(\'now\') WHERE token_hash = ?').bind(tokenHash).run();
+  const user: Record<string, unknown> = { ...row };
+  delete user.token_expires_at;
+  delete user.token_used_at;
+  return user as unknown as UserRow;
+}
+
 export async function createSession(db: D1Database, sessionIdHash: string, userId: string, expiresAt: string): Promise<void> {
   await db.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(sessionIdHash, userId, expiresAt).run();
 }

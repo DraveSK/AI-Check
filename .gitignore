@@ -7,6 +7,7 @@ vite.config.d.ts
 .dev.vars
 .wrangler/
 public/ai-check-report.json
+public/scan.mjs
 public/ai-check-history/
 public/ai-check-history-index.json
 .ai-check-history/

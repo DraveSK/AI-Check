@@ -13,6 +13,7 @@ import { listUsersRoute, getUserRoute, updateUserRoleRoute, updateUserStatusRout
 import { getAnalytics } from './routes/analytics';
 import { getAuditLogs } from './routes/audit';
 import { getSystemStatus } from './routes/system';
+import { createScanTokenRoute } from './routes/scan';
 
 export type { Env };
 
@@ -24,6 +25,8 @@ router.post('/api/v1/auth/logout', logout);
 router.get('/api/v1/auth/me', me);
 
 router.get('/api/v1/device', listUserDevices);
+
+router.post('/api/v1/scan-token', createScanTokenRoute);
 
 router.post('/api/v1/report', uploadReport);
 router.get('/api/v1/report/history', reportHistory);
@@ -101,7 +104,10 @@ export default {
       // whole job is pointing at the current hashed asset names — so it
       // gets `no-store` instead. Hashed assets underneath keep aggressive
       // immutable caching; a new deploy gives them new filenames anyway.
-      url.pathname === '/' || url.pathname.endsWith('.html') ? 'no-store' : 'public, max-age=31536000, immutable',
+      // /scan.mjs is unhashed and rebuilt every deploy (the downloadable
+      // .command file fetches it by fixed name — see ScanModal), so like
+      // the entry HTML it must never be served stale.
+      url.pathname === '/' || url.pathname.endsWith('.html') || url.pathname === '/scan.mjs' ? 'no-store' : 'public, max-age=31536000, immutable',
     );
     return new Response(asset.body, {
       status: asset.status,

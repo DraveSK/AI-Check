@@ -2,9 +2,10 @@ import type { RouteContext } from '../router';
 import type { InspectionReport } from '../../src/types';
 import { apiError, ok, pick } from '../lib/http';
 import { requireBindings } from '../lib/guard';
-import { requirePermission } from '../lib/rbac';
+import { requirePermission, hasPermission, type Role } from '../lib/rbac';
 import { safeParseJSON, inspectionReportSchema, compareQuerySchema } from '../lib/validation';
-import { upsertDevice, insertReport, getReport, listReports, recordAudit, type ReportRow } from '../lib/db';
+import { sha256Hex } from '../lib/crypto';
+import { upsertDevice, insertReport, getReport, listReports, recordAudit, consumeScanToken, type ReportRow, type UserRow } from '../lib/db';
 import { putReport, getReportJSON } from '../lib/r2';
 import { checkRateLimit, RATE_LIMITS } from '../lib/ratelimit';
 import { compareReports } from '../../src/utils/compareReports';
@@ -33,8 +34,25 @@ function resolveTargetUserId(request: Request, requester: { id: string; role: st
 export async function uploadReport(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB', 'REPORTS');
   if (guard) return guard;
-  const user = await requirePermission(ctx.request, ctx.env, 'reports.write');
-  if (user instanceof Response) return user;
+
+  // Two ways in: a normal session (cookie/Bearer, the scanner CLI path)
+  // or a one-time X-Scan-Token minted by POST /api/v1/scan-token for the
+  // browser's downloadable scan script. The token is burned on first
+  // use, so a leaked download can't upload twice.
+  let user: UserRow;
+  const scanToken = ctx.request.headers.get('X-Scan-Token');
+  if (scanToken) {
+    const resolved = await consumeScanToken(ctx.env.DB!, await sha256Hex(scanToken));
+    if (!resolved) return apiError('unauthorized', 'This scan link has expired or was already used. Download a fresh one from the dashboard.');
+    if (resolved.status === 'disabled' || !hasPermission(resolved.role as Role, 'reports.write')) {
+      return apiError('forbidden', 'This account cannot upload reports.');
+    }
+    user = resolved;
+  } else {
+    const resolved = await requirePermission(ctx.request, ctx.env, 'reports.write');
+    if (resolved instanceof Response) return resolved;
+    user = resolved;
+  }
 
   const allowed = await checkRateLimit(ctx.env, RATE_LIMITS.upload, user.id);
   if (!allowed) return apiError('rate_limited', 'Too many uploads. Try again later.');
