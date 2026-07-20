@@ -18,14 +18,12 @@ import { AnalyticsPage } from './pages/Analytics';
 import { AuditLogsPage } from './pages/AuditLogs';
 import { PlatformPage } from './pages/Platform';
 import { Forbidden } from './components/Forbidden';
-import { SaveAccountModal } from './components/SaveAccountModal';
-import { Login } from './pages/Login';
+import { PrivacyNotice } from './components/PrivacyNotice';
 import { useCloudAuth, type CloudUser } from './hooks/useCloudAuth';
 
 function Dashboard({ user }: { user: CloudUser | null }) {
   const [page, setPage] = useState<Page>('Overview');
   const [dark, setDark] = useState(true);
-  const [saveOpen, setSaveOpen] = useState(false);
   const providers = useProviders();
   const device = useProviderData(() => providers.device.getActiveDevice());
   const security = useProviderData(() => providers.security.getSecuritySnapshot('active'));
@@ -67,8 +65,8 @@ function Dashboard({ user }: { user: CloudUser | null }) {
   );
 
   const nav = navForPermissions(user?.permissions ?? null);
-  const workspaceName = user?.isGuest ? 'Guest' : user?.display_name || user?.email || 'Drave Team';
-  const initials = user?.isGuest ? 'GU' : (user?.email ?? 'DT').slice(0, 2).toUpperCase();
+  const workspaceName = user?.isGuest ? 'This device' : user?.display_name || user?.email || 'Drave Team';
+  const initials = user?.isGuest ? 'DV' : (user?.email ?? 'DT').slice(0, 2).toUpperCase();
 
   return (
     <div className={dark ? 'app dark' : 'app'}>
@@ -81,16 +79,10 @@ function Dashboard({ user }: { user: CloudUser | null }) {
           <span className="avatar">{initials}</span>
           <div>
             <b>{workspaceName}</b>
-            <small>{user?.isGuest ? 'Not saved yet' : user ? user.role.replace('_', ' ') : 'Personal workspace'}</small>
+            <small>{user?.isGuest ? 'Stored on this device' : user ? user.role.replace('_', ' ') : 'Personal workspace'}</small>
           </div>
           <ChevronDown size={15} />
         </div>
-        {user?.isGuest && (
-          <button className="guest-save" onClick={() => setSaveOpen(true)}>
-            Save your results
-          </button>
-        )}
-        {saveOpen && <SaveAccountModal onClose={() => setSaveOpen(false)} />}
         <nav>
           {nav.map(({ name, icon: Icon }) => (
             <button key={name} onClick={() => setPage(name)} className={page === name ? 'active' : ''}>
@@ -162,8 +154,18 @@ function Gate() {
 
   if (!isCloudApi) return <Dashboard user={null} />;
   if (auth.status === 'checking') return null;
-  if (auth.status === 'signed-out') return <Login />;
-  return <Dashboard user={auth.user} />;
+  // No sign-in gate: a fresh visitor gets a guest session automatically
+  // (see useCloudAuth) so they land straight on the dashboard. If that
+  // silently fails (e.g. DB unavailable), fall through to a read-only
+  // dashboard rather than blocking on a login screen — see
+  // docs/RBAC.md §Guest accounts for why there's no account requirement
+  // by default.
+  return (
+    <>
+      <Dashboard user={auth.user} />
+      <PrivacyNotice />
+    </>
+  );
 }
 
 export default function App() {
