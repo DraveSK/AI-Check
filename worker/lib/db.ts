@@ -16,6 +16,7 @@ export interface UserRow {
   created_at: string;
   updated_at: string;
   last_login: string | null;
+  is_guest: number; // SQLite boolean — 1 for an unclaimed guest account
 }
 
 export interface DeviceRow {
@@ -67,7 +68,10 @@ export async function findOrCreateUser(db: D1Database, email: string): Promise<U
   const existing = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<UserRow>();
   if (existing) return existing;
 
-  const { count } = (await db.prepare('SELECT COUNT(*) as count FROM users').first<{ count: number }>()) ?? { count: 0 };
+  // Guests don't count toward "first ever user" — otherwise the very
+  // first anonymous visitor (see createGuestUser) would claim
+  // super_admin before anyone had signed in with a real email.
+  const { count } = (await db.prepare('SELECT COUNT(*) as count FROM users WHERE is_guest = 0').first<{ count: number }>()) ?? { count: 0 };
   const role = count === 0 ? 'super_admin' : 'user';
 
   const id = crypto.randomUUID();
@@ -77,14 +81,52 @@ export async function findOrCreateUser(db: D1Database, email: string): Promise<U
   return created;
 }
 
+/** Creates an unclaimed guest account — a real `users` row (role='user',
+ * is_guest=1) with a non-deliverable placeholder email, so every
+ * existing permission check and ownership rule works unchanged for a
+ * guest. See docs/RBAC.md §Guest accounts. */
+export async function createGuestUser(db: D1Database): Promise<UserRow> {
+  const id = crypto.randomUUID();
+  const email = `guest-${id}@guest.aicheck.invalid`;
+  await db.prepare('INSERT INTO users (id, email, role, is_guest) VALUES (?, ?, ?, 1)').bind(id, email, 'user').run();
+  const created = await db.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<UserRow>();
+  if (!created) throw new Error('Failed to create guest user.');
+  return created;
+}
+
+/** Turns a guest into a real account by claiming a verified email — the
+ * moment a guest clicks "Save my results" and completes the magic-link
+ * flow (see worker/routes/auth.ts verifyMagicLink). If that email
+ * already belongs to an existing account, the guest's devices/reports
+ * are reassigned to it and the empty guest row is dropped — signing in
+ * with an email is always the same identity, guest history or not. */
+export async function upgradeGuestUser(db: D1Database, guestUserId: string, realEmail: string): Promise<UserRow> {
+  const existing = await db.prepare('SELECT * FROM users WHERE email = ?').bind(realEmail).first<UserRow>();
+  if (existing) {
+    await db.prepare('UPDATE devices SET user_id = ? WHERE user_id = ?').bind(existing.id, guestUserId).run();
+    await db.prepare('UPDATE reports SET user_id = ? WHERE user_id = ?').bind(existing.id, guestUserId).run();
+    await db.prepare('DELETE FROM users WHERE id = ?').bind(guestUserId).run();
+    return existing;
+  }
+  await db.prepare("UPDATE users SET email = ?, is_guest = 0, updated_at = datetime('now') WHERE id = ?").bind(realEmail, guestUserId).run();
+  const updated = await db.prepare('SELECT * FROM users WHERE id = ?').bind(guestUserId).first<UserRow>();
+  if (!updated) throw new Error('Failed to upgrade guest user.');
+  return updated;
+}
+
 export async function updateLastLogin(db: D1Database, userId: string): Promise<void> {
   await db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").bind(userId).run();
 }
 
+/** Excludes unclaimed guest accounts (see createGuestUser) — an admin
+ * managing users shouldn't see a row per anonymous visitor, only people
+ * who actually signed in. */
 export async function listUsers(db: D1Database, search?: string, limit = 100): Promise<UserRow[]> {
   const query = search
-    ? db.prepare('SELECT * FROM users WHERE email LIKE ? OR display_name LIKE ? ORDER BY created_at DESC LIMIT ?').bind(`%${search}%`, `%${search}%`, limit)
-    : db.prepare('SELECT * FROM users ORDER BY created_at DESC LIMIT ?').bind(limit);
+    ? db
+        .prepare('SELECT * FROM users WHERE is_guest = 0 AND (email LIKE ? OR display_name LIKE ?) ORDER BY created_at DESC LIMIT ?')
+        .bind(`%${search}%`, `%${search}%`, limit)
+    : db.prepare('SELECT * FROM users WHERE is_guest = 0 ORDER BY created_at DESC LIMIT ?').bind(limit);
   const { results } = await query.all<UserRow>();
   return results;
 }
@@ -113,8 +155,8 @@ export interface PlatformStats {
 
 export async function getPlatformStats(db: D1Database): Promise<PlatformStats> {
   const [users, activeUsers, reports, reportsToday, storage, versions] = await Promise.all([
-    db.prepare('SELECT COUNT(*) as n FROM users').first<{ n: number }>(),
-    db.prepare("SELECT COUNT(*) as n FROM users WHERE last_login > datetime('now', '-30 days')").first<{ n: number }>(),
+    db.prepare('SELECT COUNT(*) as n FROM users WHERE is_guest = 0').first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) as n FROM users WHERE is_guest = 0 AND last_login > datetime('now', '-30 days')").first<{ n: number }>(),
     db.prepare('SELECT COUNT(*) as n FROM reports').first<{ n: number }>(),
     db.prepare("SELECT COUNT(*) as n FROM reports WHERE created_at > datetime('now', '-1 day')").first<{ n: number }>(),
     db.prepare('SELECT COALESCE(SUM(used_bytes), 0) as n FROM reports').first<{ n: number }>(),

@@ -11,7 +11,7 @@ Four roles, defined once in [`worker/lib/rbac.ts`](../worker/lib/rbac.ts):
 
 | Role | Who | Stored as |
 |---|---|---|
-| `guest` | No session | Never a database row — the absence of a valid session cookie/token *is* guest |
+| `guest` | No session at all (API caller with no cookie/token) | Never a database row |
 | `user` | Everyone who signs in | `users.role = 'user'` (default) |
 | `admin` | Trusted staff | `users.role = 'admin'` |
 | `super_admin` | Whoever bootstraps the instance | `users.role = 'super_admin'` |
@@ -26,6 +26,40 @@ plain `user`. This is the entire setup story — there's no separate
 listing admin emails. For a solo founder standing up their own instance,
 "whoever signs in first is in charge" is the simplest correct answer;
 anyone else can be promoted later by that person from the Users page.
+
+### Guest accounts
+
+Not to be confused with the `guest` **role** above (no session at all).
+A **guest account** is what a first-time visitor actually gets: the
+frontend silently calls `POST /api/v1/auth/guest`
+([`worker/routes/auth.ts`](../worker/routes/auth.ts)) the moment
+`GET /api/v1/auth/me` comes back 401, which creates a real `users` row
+— `role = 'user'`, `is_guest = 1`, a non-deliverable placeholder email —
+and a normal session cookie. Every permission check, ownership rule, and
+route guard in this document applies to a guest exactly as it does to
+anyone else, because a guest *is* a `user`-role account; nothing had to
+special-case it.
+
+This is deliberate: forcing an email before someone has scanned
+anything and seen a real result is the single biggest drop-off point for
+a non-technical visitor. A guest can run an inspection, view the
+dashboard, and see their own report the same session they arrived —
+"sign in" only shows up once there's something worth keeping.
+
+Clicking **"Save your results"** (shown only when `user.isGuest`) sends
+a normal magic link to a real email. On verification,
+`verifyMagicLink` detects the caller already holds a guest session and
+calls `upgradeGuestUser` instead of creating a new account: the guest
+row's email is claimed in place (its devices/reports carry over
+automatically, same row). If that email already belongs to an existing
+account, the guest's devices/reports are reassigned to it and the empty
+guest row is dropped — signing in with an email is always the same
+identity, guest history or not.
+
+Unclaimed guest rows are excluded from `listUsers` and platform stats
+(`getPlatformStats`) — an admin managing users shouldn't see a row per
+anonymous visitor who never came back. There's no cleanup job for
+abandoned guest rows yet; see Remaining technical debt.
 
 ## Permissions
 
@@ -226,6 +260,10 @@ filter if the secret is never in the call in the first place).
 - Rate limiting is per-IP/per-user, not per-role — a compromised `admin`
   account has the same request budget as a `user`. Not a problem yet at
   this scale.
+- No cleanup job for guest accounts that never convert — they accumulate
+  as `users` rows indefinitely (harmless since they're excluded from
+  `listUsers`/stats, but a scheduled purge of old unclaimed guests would
+  be tidy).
 - No UI for a `super_admin` to see *why* the first-user bootstrap assigned
   a given account that role (it's implicit from `users.created_at` being
   earliest) — fine for a solo founder, would need a note if this instance

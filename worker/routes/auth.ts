@@ -3,7 +3,7 @@ import { apiError, ok } from '../lib/http';
 import { requireBindings } from '../lib/guard';
 import { safeParseJSON, magicLinkRequestSchema, magicLinkVerifySchema } from '../lib/validation';
 import { randomToken, sha256Hex } from '../lib/crypto';
-import { createMagicLink, consumeMagicLink, findOrCreateUser, createSession, deleteSession, recordAudit, updateLastLogin } from '../lib/db';
+import { createMagicLink, consumeMagicLink, findOrCreateUser, createGuestUser, upgradeGuestUser, createSession, deleteSession, recordAudit, updateLastLogin } from '../lib/db';
 import { sessionCookie, sessionExpiry, clearSessionCookie, currentUser } from '../lib/auth';
 import { sendMagicLinkEmail } from '../lib/email';
 import { checkRateLimit, RATE_LIMITS, clientIp } from '../lib/ratelimit';
@@ -47,8 +47,34 @@ export async function requestMagicLink(ctx: RouteContext): Promise<Response> {
   return ok({ sent: true });
 }
 
+/** POST /api/v1/auth/guest — silently provisions an unclaimed guest
+ * account and session so a first-time visitor can scan and see results
+ * before ever giving an email (see worker/lib/db.ts createGuestUser and
+ * docs/RBAC.md §Guest accounts). Rate limited by IP like the real
+ * sign-in flow — this still writes a row per call. */
+export async function guestSignIn(ctx: RouteContext): Promise<Response> {
+  const guard = requireBindings(ctx.env, 'DB');
+  if (guard) return guard;
+
+  const allowed = await checkRateLimit(ctx.env, RATE_LIMITS.magicLink, clientIp(ctx.request));
+  if (!allowed) return apiError('rate_limited', 'Too many attempts. Try again in a few minutes.');
+
+  const user = await createGuestUser(ctx.env.DB!);
+  const sessionToken = randomToken();
+  const sessionHash = await sha256Hex(sessionToken);
+  const expiresAt = sessionExpiry();
+  await createSession(ctx.env.DB!, sessionHash, user.id, expiresAt);
+
+  return new Response(JSON.stringify({ data: { guest: true } }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json', 'Set-Cookie': sessionCookie(sessionToken, expiresAt) },
+  });
+}
+
 /** GET /api/v1/auth/verify?token=... — consumes the token, creates a
- * session, and sets the HttpOnly cookie. */
+ * session, and sets the HttpOnly cookie. If the browser already has a
+ * guest session, this claims that same account (keeping its scan
+ * history) instead of starting a fresh one — see upgradeGuestUser. */
 export async function verifyMagicLink(ctx: RouteContext): Promise<Response> {
   const guard = requireBindings(ctx.env, 'DB');
   if (guard) return guard;
@@ -61,7 +87,9 @@ export async function verifyMagicLink(ctx: RouteContext): Promise<Response> {
   const consumed = await consumeMagicLink(ctx.env.DB!, tokenHash);
   if (!consumed) return apiError('unauthorized', 'This sign-in link is invalid, expired, or already used.');
 
-  const user = await findOrCreateUser(ctx.env.DB!, consumed.email);
+  const guest = await currentUser(ctx.request, ctx.env);
+  const user =
+    guest && guest.is_guest ? await upgradeGuestUser(ctx.env.DB!, guest.id, consumed.email) : await findOrCreateUser(ctx.env.DB!, consumed.email);
   if (user.status === 'disabled') {
     await recordAudit(ctx.env.DB!, user.id, 'auth.sign_in_blocked', { reason: 'disabled' });
     return apiError('forbidden', 'This account has been disabled.');
@@ -117,6 +145,7 @@ export async function me(ctx: RouteContext): Promise<Response> {
   if (!user) return apiError('unauthorized', 'Not signed in.');
   return ok({
     ...pick(user, ['id', 'email', 'display_name', 'avatar', 'role', 'status', 'created_at', 'last_login']),
+    isGuest: Boolean(user.is_guest),
     permissions: permissionsForRole(user.role as Role),
   });
 }

@@ -18,12 +18,14 @@ import { AnalyticsPage } from './pages/Analytics';
 import { AuditLogsPage } from './pages/AuditLogs';
 import { PlatformPage } from './pages/Platform';
 import { Forbidden } from './components/Forbidden';
+import { SaveAccountModal } from './components/SaveAccountModal';
 import { Login } from './pages/Login';
 import { useCloudAuth, type CloudUser } from './hooks/useCloudAuth';
 
 function Dashboard({ user }: { user: CloudUser | null }) {
   const [page, setPage] = useState<Page>('Overview');
   const [dark, setDark] = useState(true);
+  const [saveOpen, setSaveOpen] = useState(false);
   const providers = useProviders();
   const device = useProviderData(() => providers.device.getActiveDevice());
   const security = useProviderData(() => providers.security.getSecuritySnapshot('active'));
@@ -65,8 +67,8 @@ function Dashboard({ user }: { user: CloudUser | null }) {
   );
 
   const nav = navForPermissions(user?.permissions ?? null);
-  const workspaceName = user?.display_name || user?.email || 'Drave Team';
-  const initials = (user?.email ?? 'DT').slice(0, 2).toUpperCase();
+  const workspaceName = user?.isGuest ? 'Guest' : user?.display_name || user?.email || 'Drave Team';
+  const initials = user?.isGuest ? 'GU' : (user?.email ?? 'DT').slice(0, 2).toUpperCase();
 
   return (
     <div className={dark ? 'app dark' : 'app'}>
@@ -79,10 +81,16 @@ function Dashboard({ user }: { user: CloudUser | null }) {
           <span className="avatar">{initials}</span>
           <div>
             <b>{workspaceName}</b>
-            <small>{user ? user.role.replace('_', ' ') : 'Personal workspace'}</small>
+            <small>{user?.isGuest ? 'Not saved yet' : user ? user.role.replace('_', ' ') : 'Personal workspace'}</small>
           </div>
           <ChevronDown size={15} />
         </div>
+        {user?.isGuest && (
+          <button className="guest-save" onClick={() => setSaveOpen(true)}>
+            Save your results
+          </button>
+        )}
+        {saveOpen && <SaveAccountModal onClose={() => setSaveOpen(false)} />}
         <nav>
           {nav.map(({ name, icon: Icon }) => (
             <button key={name} onClick={() => setPage(name)} className={page === name ? 'active' : ''}>

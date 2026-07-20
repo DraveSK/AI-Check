@@ -2,7 +2,7 @@ import type { Env } from './env';
 import { Router } from './router';
 import { apiError } from './lib/http';
 import { log, newRequestId } from './lib/log';
-import { requestMagicLink, verifyMagicLink, logout, me } from './routes/auth';
+import { requestMagicLink, verifyMagicLink, logout, me, guestSignIn } from './routes/auth';
 import { listUserDevices } from './routes/device';
 import { uploadReport, getReportById, reportHistory, compareReportsRoute } from './routes/report';
 import { analyzeReport } from './routes/analyze';
@@ -19,6 +19,7 @@ export type { Env };
 
 const router = new Router();
 
+router.post('/api/v1/auth/guest', guestSignIn);
 router.post('/api/v1/auth/magic-link', requestMagicLink);
 router.get('/api/v1/auth/verify', verifyMagicLink);
 router.post('/api/v1/auth/logout', logout);
