@@ -91,6 +91,27 @@ export default {
       return new Response(response.body, { status: response.status, headers: { ...Object.fromEntries(response.headers), 'Cache-Control': 'no-store', 'X-Request-Id': requestId } });
     }
 
+    const isUnhashed = url.pathname === '/' || url.pathname.endsWith('.html') || url.pathname === '/scan.mjs';
+
+    // Cloudflare's edge cached these paths under an earlier deploy that
+    // sent `public, max-age=31536000, immutable` (see the Cache-Control
+    // comment below) — that cached copy predates this fix and won't
+    // re-check the origin until its year-long TTL expires, no matter
+    // what headers we return now. ai-check.drave-ai.workers.dev is
+    // Cloudflare's own shared *.workers.dev zone, not one this account
+    // owns, so there's no dashboard "Purge Cache" available on the Free
+    // plan (see docs/DEPLOYMENT.md §Custom domain for the real fix —
+    // moving to an owned zone). In the meantime, actively evict from the
+    // Cache API on every request; each edge PoP self-heals the first
+    // time a request lands there. Cache API is per-Worker-runtime, not
+    // zone-scoped, so this works even without zone access.
+    if (isUnhashed) {
+      // `caches.default` is Cloudflare's runtime API; the WebWorker lib
+      // pulled in for DOM fetch types doesn't declare it on CacheStorage.
+      const defaultCache = (caches as unknown as { default: Cache }).default;
+      await defaultCache.delete(new Request(url.origin + url.pathname, request));
+    }
+
     // Route every request through the asset binding. This prevents the SPA
     // fallback from ever returning index.html in place of a CSS or JS asset.
     const asset = await env.ASSETS.fetch(request);
@@ -107,7 +128,7 @@ export default {
       // /scan.mjs is unhashed and rebuilt every deploy (the downloadable
       // .command file fetches it by fixed name — see ScanModal), so like
       // the entry HTML it must never be served stale.
-      url.pathname === '/' || url.pathname.endsWith('.html') || url.pathname === '/scan.mjs' ? 'no-store' : 'public, max-age=31536000, immutable',
+      isUnhashed ? 'no-store' : 'public, max-age=31536000, immutable',
     );
     return new Response(asset.body, {
       status: asset.status,
