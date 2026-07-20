@@ -132,8 +132,9 @@ export function ScanModal({ onClose, onComplete }: { onClose: () => void; onComp
               will do everything for you. Results appear here automatically when it finishes.
             </p>
             <p className="modal-hint">
-              If your Mac says the file "cannot be opened": right-click (or hold Control and click) the file, choose{' '}
-              <b>Open</b>, then click <b>Open</b> again. You only have to do this once.
+              If your Mac blocks it with a message about "malware" or an unidentified developer: open{' '}
+              <b>System Settings → Privacy &amp; Security</b>, scroll down, and click <b>Open Anyway</b> next to
+              AI-Check-Scan.command — then confirm once more. You only have to do this the first time.
             </p>
             <button className="ghost" onClick={downloadScanFile}>
               Didn't get the file? Download it again
