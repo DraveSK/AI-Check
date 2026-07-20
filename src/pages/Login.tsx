@@ -50,7 +50,7 @@ export function Login() {
         )}
 
         <p className="privacy-note">
-          <ShieldCheck size={14} /> Scanning stays local until you choose to upload — see PRIVACY.md.
+          <ShieldCheck size={14} /> We only look at folder sizes on your device — never the contents of your files.
         </p>
       </Card>
     </div>
