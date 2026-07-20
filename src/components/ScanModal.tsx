@@ -1,12 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Download, Loader2, MousePointerClick, X } from 'lucide-react';
 import { apiFetch } from '../lib/apiFetch';
+import { createSingleFileZip } from '../utils/zip';
 
 /**
  * The guided "Run inspection" flow — written for someone who has never
  * opened a terminal. Mints a one-time scan token (POST /api/v1/scan-token),
- * generates a double-clickable .command file with the token inlined, then
- * polls the report list until the upload lands and celebrates.
+ * generates a double-clickable .command script with the token inlined,
+ * then polls the report list until the upload lands and celebrates.
+ *
+ * The script is delivered inside a .zip, not downloaded directly — a
+ * plain browser download of a text file loses the Unix executable bit,
+ * so double-clicking it fails with "you do not have appropriate access
+ * privileges" instead of running. Zip preserves that bit (see
+ * src/utils/zip.ts); Safari auto-extracts zips on download, and Finder
+ * extracts on double-click otherwise, so the underlying friction is the
+ * same "open the file" step either way.
  *
  * Only meaningful in cloud-api mode; mock/local-report builds show the
  * developer instructions instead (see the isCloudApi branch below).
@@ -85,11 +94,12 @@ export function ScanModal({ onClose, onComplete }: { onClose: () => void; onComp
       baselineIds.current = new Set(reports.map((r) => r.id));
 
       const { token } = await apiFetch<{ token: string }>('/api/v1/scan-token', { method: 'POST' });
-      const blob = new Blob([scanScript(window.location.origin, token)], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
+      const script = scanScript(window.location.origin, token);
+      const zip = createSingleFileZip('AI-Check-Scan.command', script, 0o755);
+      const url = URL.createObjectURL(zip);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'AI-Check-Scan.command';
+      a.download = 'AI-Check-Scan.zip';
       a.click();
       URL.revokeObjectURL(url);
       setPhase('waiting');
@@ -128,8 +138,9 @@ export function ScanModal({ onClose, onComplete }: { onClose: () => void; onComp
             <Loader2 size={36} className="modal-spinner" />
             <h2>Waiting for your scan...</h2>
             <p className="modal-copy">
-              Open the <b>AI-Check-Scan.command</b> file in your <b>Downloads</b> folder — double-click it and a window
-              will do everything for you. Results appear here automatically when it finishes.
+              Go to your <b>Downloads</b> folder and open <b>AI-Check-Scan.zip</b> — double-click it to unzip (Safari
+              may have already done this for you), then double-click the <b>AI-Check-Scan.command</b> file inside.
+              Results appear here automatically when it finishes.
             </p>
             <p className="modal-hint">
               If your Mac blocks it with a message about "malware" or an unidentified developer: open{' '}
